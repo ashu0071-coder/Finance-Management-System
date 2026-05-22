@@ -1,30 +1,29 @@
 /**
  * Calculate interest amount from total loan amount
  * Formula: Interest = Total Loan × Interest Rate / 100
- * Example: Total Loan ₹50,000 @ 10% = ₹5,000
+ * Example: Total Loan ₹50,000 @ 9% = ₹4,500
  */
-export const calculateInterest = (totalLoanAmount, interestRate = 10) => {
-  return (totalLoanAmount * interestRate) / 100;
+export const calculateInterest = (totalLoanAmount, interestRate = 9) => {
+  return Math.round((totalLoanAmount * interestRate) / 100);
 };
 
 
 /**
- * Calculate bond fee (fixed amount from settings)
- * Default: ₹300
+ * Calculate bond fee as 1% of loan amount (fixed, non-configurable)
+ * Example: Loan ₹10,000 → Bond Fee = ₹100
  */
-export const calculateBondFee = (bondFeeAmount = 300) => {
-  const parsedBondFee = Number(bondFeeAmount);
-  return Number.isFinite(parsedBondFee) ? parsedBondFee : 300;
+export const calculateBondFee = (totalLoanAmount) => {
+  return Math.round(totalLoanAmount * 0.01);
 };
 
 
 /**
  * Calculate net disbursed amount (what customer receives in hand)
- * Formula: Net Disbursed = Total Loan - Interest
- * Example: Total Loan ₹50,000 - Interest ₹5,000 = ₹45,000 disbursed
+ * Formula: Net Disbursed = Total Loan - Interest - Bond Fee
+ * Example: Total Loan ₹10,000 - Interest ₹900 (9%) - Bond Fee ₹100 (1%) = ₹9,000 disbursed
  */
-export const calculateNetDisbursement = (totalLoanAmount, interestAmount) => {
-  return totalLoanAmount - interestAmount;
+export const calculateNetDisbursement = (totalLoanAmount, interestAmount, bondFee) => {
+  return Math.round(totalLoanAmount - interestAmount - bondFee);
 };
 
 
@@ -32,7 +31,7 @@ export const calculateNetDisbursement = (totalLoanAmount, interestAmount) => {
  * Calculate monthly interest
  */
 export const calculateMonthlyInterest = (interest, tenureMonths = 3) => {
-  return interest / tenureMonths;
+  return Math.round(interest / tenureMonths);
 };
 
 
@@ -40,17 +39,16 @@ export const calculateMonthlyInterest = (interest, tenureMonths = 3) => {
  * Calculate early payment refund
  * IMPORTANT: Bond fee is NON-REFUNDABLE. Only interest portion is refundable.
  *
- * How it works:
- * - If bond fee is properly stored in DB, use it directly
- * - If bond fee is 0 or missing (older records), use fallback bond fee from settings
+ * Bond fee = 1% of loan amount (fixed, non-refundable)
+ * Pure interest = interest_amount - bond_fee (refundable proportionally)
  *
- * Example with ₹2,000 total charges:
- * - Total charges (interest_amount): ₹2,000
- * - Bond fee (from setting): ₹300 (non-refundable)
- * - Pure interest: ₹2,000 - ₹300 = ₹1,700 (refundable)
- * - Monthly Interest: ₹1,700 ÷ 3 = ₹566.67/month
+ * Example with loan ₹10,000, interest_rate 9%, bond_fee ₹100:
+ * - Total charges (interest_amount): ₹1,000 (10% total = 9% interest + 1% bond)
+ * - Bond fee: ₹100 (non-refundable)
+ * - Pure interest: ₹900 (refundable)
+ * - Monthly Interest: ₹300/month
  * - Paid in 1 month, 2 months remaining
- * - Refund: ₹566.67 × 2 = ₹1,133.33
+ * - Refund: ₹300 × 2 = ₹600
  */
 export const calculateEarlyPaymentRefund = (
   startDate,
@@ -58,7 +56,7 @@ export const calculateEarlyPaymentRefund = (
   tenureMonths,
   paymentDate,
   bondFee = 0,
-  fallbackBondFee = 300
+  fallbackBondFee = 0
 ) => {
   // Calculate months elapsed from start to payment date
   const monthsElapsed = calculateMonthsElapsed(startDate, paymentDate);
@@ -68,11 +66,9 @@ export const calculateEarlyPaymentRefund = (
     return 0;
   }
  
-  // If bond fee is missing on old loans, use configured fallback bond fee from settings.
-  const actualBondFee = bondFee > 0 ? bondFee : fallbackBondFee;
- 
-  // Calculate refundable interest (excluding bond fee which is never refunded)
-  const refundableInterest = Math.max(interestAmount - actualBondFee, 0);
+  // interestAmount already stores only the interest component.
+  // Bond fee is stored separately and remains non-refundable.
+  const refundableInterest = Math.max(interestAmount, 0);
  
   // Calculate monthly interest from refundable portion only
   const monthlyInterest = refundableInterest / tenureMonths;
@@ -81,7 +77,7 @@ export const calculateEarlyPaymentRefund = (
   const monthsRemaining = tenureMonths - monthsElapsed;
  
   // Refund = monthly interest × months remaining
-  return monthlyInterest * monthsRemaining;
+  return Math.round(monthlyInterest * monthsRemaining);
 };
 
 
@@ -101,7 +97,7 @@ export const calculatePenalty = (totalLoanAmount, dueDate, currentDate, penaltyR
   const daysOverdue = Math.floor((current - due) / (1000 * 60 * 60 * 24));
   const dailyPenalty = (totalLoanAmount * penaltyRateAnnual / 100) / 365;
  
-  return dailyPenalty * daysOverdue;
+  return Math.round(dailyPenalty * daysOverdue);
 };
 
 
@@ -109,7 +105,7 @@ export const calculatePenalty = (totalLoanAmount, dueDate, currentDate, penaltyR
  * Calculate outstanding amount
  */
 export const calculateOutstanding = (totalLoanAmount, totalPaid, penaltyAmount = 0) => {
-  return totalLoanAmount - totalPaid + penaltyAmount;
+  return Math.round(totalLoanAmount - totalPaid + penaltyAmount);
 };
 
 
@@ -168,8 +164,9 @@ export const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    minimumFractionDigits: 2,
-  }).format(amount);
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(amount));
 };
 
 
@@ -237,21 +234,30 @@ export const calculateLoanValues = (principal, bondFee, startDate, interestRate 
 
 /**
  * Calculate loan details for form display
- * User enters Total Loan Amount, system calculates interest and net disbursed
- * Note: Bond fee is a fixed amount from settings (default ₹300)
+ * User enters Total Loan Amount and Interest Rate, system calculates:
+ * - Bond Fee: fixed 1% of loan amount (non-configurable)
+ * - Interest Amount: based on interest rate (e.g. 9%)
+ * - Total Deduction: Bond Fee + Interest (e.g. 10% total if interest is 9%)
+ * - Net Disbursed: Loan Amount - Interest - Bond Fee
+ *
+ * Example: Loan ₹10,000 @ 9% interest
+ *   Bond Fee = 1% = ₹100
+ *   Interest = 9% = ₹900
+ *   Total Deduction = ₹1,000 (10%)
+ *   Net Disbursed = ₹9,000
  */
-export const calculateLoanDetails = (totalLoanAmount, interestRate, tenureMonths = 3, bondFeeAmount = 300) => {
+export const calculateLoanDetails = (totalLoanAmount, interestRate, tenureMonths = 3) => {
   const interest_amount = calculateInterest(totalLoanAmount, interestRate);
-  const bond_fee = calculateBondFee(bondFeeAmount); // Fixed bond fee amount
-  const net_disbursed_amount = calculateNetDisbursement(totalLoanAmount, interest_amount);
+  const bond_fee = calculateBondFee(totalLoanAmount); // 1% of loan amount
+  const net_disbursed_amount = calculateNetDisbursement(totalLoanAmount, interest_amount, bond_fee);
   const monthly_interest = calculateMonthlyInterest(interest_amount, tenureMonths);
  
   return {
-    interest_amount: Number(interest_amount.toFixed(2)),
-    bond_fee: Number(bond_fee.toFixed(2)), // Still track internally for early payment refunds
-    net_disbursed_amount: Number(net_disbursed_amount.toFixed(2)),
-    total_loan_amount: Number(totalLoanAmount.toFixed(2)),
-    monthly_interest: Number(monthly_interest.toFixed(2)),
+    interest_amount,
+    bond_fee,
+    net_disbursed_amount,
+    total_loan_amount: Math.round(totalLoanAmount),
+    monthly_interest,
   };
 };
 

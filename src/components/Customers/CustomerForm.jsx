@@ -24,10 +24,15 @@ import { calculateLoanDetails } from '../../utils/calculations';
 import { useAuth } from '../../contexts/AuthContext';
 
 
+const INTEREST_COMPONENT_RATE = 9;
+const TOTAL_UPFRONT_DEDUCTION_RATE = 10;
+
+
 export default function CustomerForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const basePath = user?.role === 'super_admin' ? '/admin' : '/finance';
   const isEdit = Boolean(id);
 
 
@@ -62,9 +67,6 @@ export default function CustomerForm() {
   });
 
 
-  const [bondFeeAmount, setBondFeeAmount] = useState(300); // Default bond fee
-
-
   useEffect(() => {
     if (isEdit) {
       loadCustomer();
@@ -75,16 +77,15 @@ export default function CustomerForm() {
 
 
   useEffect(() => {
-    if (loanData.total_loan_amount && loanData.interest_rate && loanData.tenure_months) {
+    if (loanData.total_loan_amount && loanData.tenure_months) {
       const values = calculateLoanDetails(
         Number.parseFloat(loanData.total_loan_amount) || 0,
-        Number.parseFloat(loanData.interest_rate) || 0,
-        Number.parseInt(loanData.tenure_months) || 3,
-        bondFeeAmount // Pass bond fee amount from settings
+        INTEREST_COMPONENT_RATE,
+        Number.parseInt(loanData.tenure_months) || 3
       );
       setCalculatedValues(values);
     }
-  }, [loanData.total_loan_amount, loanData.interest_rate, loanData.tenure_months, bondFeeAmount]);
+  }, [loanData.total_loan_amount, loanData.tenure_months]);
 
 
   const loadSettings = async () => {
@@ -95,13 +96,9 @@ export default function CustomerForm() {
         settingsMap[setting.key] = setting.value;
       });
      
-      // Set bond fee from settings (default: 300)
-      const parsedBondFee = Number.parseFloat(settingsMap.bond_fee_amount);
-      setBondFeeAmount(Number.isNaN(parsedBondFee) ? 300 : parsedBondFee);
-     
       setLoanData(prev => ({
         ...prev,
-        interest_rate: settingsMap.default_interest_rate || '10',
+        interest_rate: String(TOTAL_UPFRONT_DEDUCTION_RATE),
         tenure_months: settingsMap.default_loan_tenure_months || '3',
       }));
     } catch (err) {
@@ -185,7 +182,7 @@ export default function CustomerForm() {
         customer_id: newCustomer.id,
         finance_company_id: user?.finance_company_id || null,
         principal_amount: calculatedValues.net_disbursed_amount,
-        interest_rate: Number.parseFloat(loanData.interest_rate),
+        interest_rate: INTEREST_COMPONENT_RATE,
         interest_amount: calculatedValues.interest_amount,
         bond_fee: calculatedValues.bond_fee,
         total_loan_amount: calculatedValues.total_loan_amount,
@@ -338,11 +335,11 @@ export default function CustomerForm() {
                             fullWidth
                             required
                             type="number"
-                            label="Interest Rate (%)"
+                            label="Initial Deduction (%)"
                             value={loanData.interest_rate}
-                            onChange={(e) => handleLoanChange('interest_rate', e.target.value)}
-                            onWheel={(e) => e.target.blur()}
-                            inputProps={{ min: 0, max: 100 }}
+                            disabled
+                            inputProps={{ min: 10, max: 10 }}
+                            helperText="Fixed at 10% total (9% interest + 1% bond fee)"
                           />
 
 
@@ -412,9 +409,21 @@ export default function CustomerForm() {
                             </Typography>
                           </Stack>
                           <Stack direction="row" justifyContent="space-between">
-                            <Typography variant="caption" color="text.secondary">Interest Amount:</Typography>
+                            <Typography variant="caption" color="text.secondary">Interest Amount (9%):</Typography>
                             <Typography variant="body2" fontWeight={600} color="warning.main">
                               ₹{calculatedValues.interest_amount.toLocaleString()}
+                            </Typography>
+                          </Stack>
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="caption" color="text.secondary">Bond Fee (1%):</Typography>
+                            <Typography variant="body2" fontWeight={600} color="info.main">
+                              ₹{calculatedValues.bond_fee.toLocaleString()}
+                            </Typography>
+                          </Stack>
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="caption" color="text.secondary">Total Deduction (10%):</Typography>
+                            <Typography variant="body2" fontWeight={700} color="error.main">
+                              ₹{(calculatedValues.interest_amount + calculatedValues.bond_fee).toLocaleString()}
                             </Typography>
                           </Stack>
                           <Stack direction="row" justifyContent="space-between">
@@ -438,7 +447,7 @@ export default function CustomerForm() {
             <Stack direction="row" spacing={2}>
               <Button
                 variant="outlined"
-                onClick={() => navigate('/customers')}
+                onClick={() => navigate(`${basePath}/customers`)}
                 disabled={saving}
                 fullWidth
                 sx={{ py: 0.5 }}

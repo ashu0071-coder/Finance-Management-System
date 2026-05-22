@@ -26,7 +26,7 @@ import { enGB } from 'date-fns/locale';
 import { getLoan } from '../../services/loanService';
 import { createPayment } from '../../services/paymentService';
 import { getSettings } from '../../services/settingsService';
-import { calculateEarlyPaymentRefund, calculatePenalty } from '../../utils/calculations';
+import { calculateEarlyPaymentRefund, calculatePenalty, calculateBondFee } from '../../utils/calculations';
 import { useAuth } from '../../contexts/AuthContext';
 
 
@@ -39,7 +39,6 @@ const PaymentForm = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [penaltyRate, setPenaltyRate] = useState(80); // Default annual penalty rate
-  const [bondFeeAmount, setBondFeeAmount] = useState(300); // Default bond fee
 
 
   const [formData, setFormData] = useState({
@@ -63,33 +62,42 @@ const PaymentForm = () => {
 
   useEffect(() => {
     if (loan && formData.payment_date) {
+      if (formData.payment_type !== 'full') {
+        setRefundAmount(0);
+        return;
+      }
+
+
+      // Fallback bond fee remains for older records, but refund is based on unused interest only.
+      const fallbackBondFee = calculateBondFee(loan.total_loan_amount || 0);
       const refund = calculateEarlyPaymentRefund(
         loan.start_date,
         loan.interest_amount,
         loan.tenure_months,
         formData.payment_date,
         loan.bond_fee || 0,
-        bondFeeAmount
+        fallbackBondFee
       );
       setRefundAmount(refund);
     }
-  }, [loan, formData.payment_date, bondFeeAmount]);
+  }, [loan, formData.payment_date, formData.payment_type]);
 
 
   useEffect(() => {
     if (loan && formData.payment_type === 'full') {
-      // Calculate total amount including penalty
-      const isOverdue = new Date(loan.current_due_date) < new Date() && loan.status !== 'closed';
+      // Calculate the actual amount to collect from the borrower.
+      // For early settlement, borrower pays outstanding minus refundable unused interest.
+      const isOverdue = new Date(loan.current_due_date) < new Date(formData.payment_date) && loan.status !== 'closed';
       const penalty = isOverdue
-        ? calculatePenalty(loan.total_loan_amount, loan.current_due_date, new Date(), penaltyRate)
+        ? calculatePenalty(loan.total_loan_amount, loan.current_due_date, formData.payment_date, penaltyRate)
         : loan.penalty_amount || 0;
-      const totalAmount = loan.outstanding_amount + penalty;
+      const totalAmount = Math.max(0, loan.outstanding_amount + penalty - refundAmount);
       setFormData(prev => ({
         ...prev,
         amount: totalAmount.toString(),
       }));
     }
-  }, [formData.payment_type, loan, penaltyRate]);
+  }, [formData.payment_type, loan, penaltyRate, refundAmount, formData.payment_date]);
 
 
   const fetchLoan = async () => {
@@ -110,15 +118,8 @@ const PaymentForm = () => {
     try {
       const settingsData = await getSettings();
       const penaltySetting = settingsData.find(s => s.key === 'penalty_rate_annual');
-      const bondFeeSetting = settingsData.find(s => s.key === 'bond_fee_amount');
       if (penaltySetting) {
         setPenaltyRate(Number.parseFloat(penaltySetting.value));
-      }
-      if (bondFeeSetting) {
-        const parsedBondFee = Number.parseFloat(bondFeeSetting.value);
-        if (!Number.isNaN(parsedBondFee)) {
-          setBondFeeAmount(parsedBondFee);
-        }
       }
     } catch (err) {
       console.error('Failed to load penalty rate:', err);
@@ -146,7 +147,7 @@ const PaymentForm = () => {
         payment_method: formData.payment_method,
         transaction_reference: formData.transaction_reference,
         refund_amount: refundAmount,
-        net_payment: Number.parseFloat(formData.amount) - refundAmount,
+        net_payment: Number.parseFloat(formData.amount) + refundAmount,
         notes: formData.notes,
       };
 
@@ -166,7 +167,7 @@ const PaymentForm = () => {
   }
 
 
-  const netPayment = Number.parseFloat(formData.amount || 0) - refundAmount;
+  const netPayment = Number.parseFloat(formData.amount || 0) + refundAmount;
   const isEarlyPayment = new Date(formData.payment_date) < new Date(loan.current_due_date);
  
   // Calculate real-time penalty for overdue loans
@@ -396,7 +397,7 @@ const PaymentForm = () => {
              
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary">
-                  Payment Amount
+                  Borrower Pays
                 </Typography>
                 <Typography variant="h6">
                   ₹{Number(formData.amount || 0).toLocaleString()}
@@ -416,7 +417,7 @@ const PaymentForm = () => {
                   </Box>
                   <Alert severity="success" sx={{ mb: 2 }}>
                     Great! Paying early saves you ₹{refundAmount.toLocaleString()} in interest.
-                    You only need to pay ₹{netPayment.toLocaleString()} instead of ₹{Number(formData.amount || 0).toLocaleString()}.
+                    You only need to pay ₹{Number(formData.amount || 0).toLocaleString()} instead of ₹{netPayment.toLocaleString()}.
                   </Alert>
                 </>
               )}
@@ -427,14 +428,14 @@ const PaymentForm = () => {
 
               <Box>
                 <Typography variant="body2" color="text.secondary" fontWeight="bold">
-                  {isEarlyPayment ? 'Total Payment (After Early Refund)' : 'Net Payment After Refund'}
+                  {isEarlyPayment ? 'Settlement Credit Applied To Loan' : 'Payment Applied To Loan'}
                 </Typography>
                 <Typography variant="h4" color={isEarlyPayment ? 'text.secondary' : 'primary'} fontWeight="bold">
                   ₹{netPayment.toLocaleString()}
                 </Typography>
                 {isEarlyPayment && (
                   <Typography variant="caption" color="success.dark" sx={{ display: 'block', mt: 0.5 }}>
-                    You save ₹{refundAmount.toLocaleString()} by paying before the due date!
+                    Borrower pays less, but the loan still gets full credit including the waived interest.
                   </Typography>
                 )}
               </Box>
@@ -475,6 +476,8 @@ const PaymentForm = () => {
 
 
 export default PaymentForm;
+
+
 
 
 

@@ -26,7 +26,6 @@ const Settings = () => {
     default_interest_rate: '',
     default_loan_tenure_months: '',
     penalty_rate_annual: '',
-    bond_fee_amount: '',
     total_finance_amount: '',
   });
 
@@ -209,43 +208,6 @@ const Settings = () => {
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
                     Example: For ₹10,000 loan at 80% annual rate, daily penalty = (₹10,000 × 80%) ÷ 365 = ₹21.92/day
-                  </Typography>
-                </Alert>
-              </Grid>
-            </Grid>
-
-
-            <Divider sx={{ my: 3 }} />
-
-
-            <Typography variant="h6" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
-              Bond Fee Settings
-            </Typography>
-            <Divider sx={{ mb: 3 }} />
-
-
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  required
-                  type="number"
-                  label="Bond Fee Amount (₹)"
-                  value={formData.bond_fee_amount}
-                  onChange={(e) => handleChange('bond_fee_amount', e.target.value)}
-                  onWheel={(e) => e.target.blur()}
-                  inputProps={{ min: 0 }}
-                  helperText="Fixed bond fee charged for each loan (default: ₹300)"
-                  size="large"
-                />
-              </Grid>
-
-
-              <Grid item xs={12}>
-                <Alert severity="info">
-                  <Typography variant="body2">
-                    Bond fee is a one-time processing charge deducted from the total loan amount.
-                    This is a fixed amount applied to all new loans.
                   </Typography>
                 </Alert>
               </Grid>

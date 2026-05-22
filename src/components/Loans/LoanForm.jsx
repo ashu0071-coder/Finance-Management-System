@@ -26,6 +26,10 @@ import { addMonths } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 
 
+const INTEREST_COMPONENT_RATE = 9;
+const TOTAL_UPFRONT_DEDUCTION_RATE = 10;
+
+
 const LoanForm = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -48,9 +52,6 @@ const LoanForm = () => {
   });
 
 
-  const [bondFeeAmount, setBondFeeAmount] = useState(300); // Default bond fee
-
-
   const [calculatedValues, setCalculatedValues] = useState({
     interest_amount: 0,
     bond_fee: 0,
@@ -66,16 +67,15 @@ const LoanForm = () => {
 
 
   useEffect(() => {
-    if (formData.total_loan_amount && formData.interest_rate && formData.tenure_months) {
+    if (formData.total_loan_amount && formData.tenure_months) {
       const values = calculateLoanDetails(
         Number.parseFloat(formData.total_loan_amount) || 0,
-        Number.parseFloat(formData.interest_rate) || 0,
-        Number.parseInt(formData.tenure_months) || 3,
-        bondFeeAmount // Pass bond fee amount from settings
+        INTEREST_COMPONENT_RATE,
+        Number.parseInt(formData.tenure_months) || 3
       );
       setCalculatedValues(values);
     }
-  }, [formData.total_loan_amount, formData.interest_rate, formData.tenure_months, bondFeeAmount]);
+  }, [formData.total_loan_amount, formData.tenure_months]);
 
 
   const fetchInitialData = async () => {
@@ -92,16 +92,12 @@ const LoanForm = () => {
       });
 
 
-      // Set bond fee from settings (default: 300)
-      const parsedBondFee = Number.parseFloat(settingsMap.bond_fee_amount);
-      setBondFeeAmount(Number.isNaN(parsedBondFee) ? 300 : parsedBondFee);
-
-
-      // Set default values from settings
+      // Keep interest component fixed at 9%.
+      // With bond fee fixed at 1%, this guarantees total upfront deduction is 10%.
       setFormData(prev => ({
         ...prev,
         customer_id: preSelectedCustomer || '',
-        interest_rate: settingsMap.default_interest_rate || '10',
+        interest_rate: String(TOTAL_UPFRONT_DEDUCTION_RATE),
         tenure_months: settingsMap.default_loan_tenure_months || '3',
       }));
     } catch (err) {
@@ -128,7 +124,7 @@ const LoanForm = () => {
         customer_id: formData.customer_id,
         finance_company_id: user?.finance_company_id || null,
         principal_amount: calculatedValues.net_disbursed_amount, // Principal = what customer receives
-        interest_rate: Number.parseFloat(formData.interest_rate),
+        interest_rate: INTEREST_COMPONENT_RATE,
         interest_amount: calculatedValues.interest_amount,
         bond_fee: calculatedValues.bond_fee,
         total_loan_amount: calculatedValues.total_loan_amount,
@@ -243,11 +239,11 @@ const LoanForm = () => {
                       fullWidth
                       required
                       type="number"
-                      label="Interest Rate (%)"
+                      label="Initial Deduction (%)"
                       value={formData.interest_rate}
-                      onChange={(e) => handleChange('interest_rate', e.target.value)}
-                      onWheel={(e) => e.target.blur()}
-                      inputProps={{ min: 0, max: 100 }}
+                      disabled
+                      inputProps={{ min: 10, max: 10 }}
+                      helperText="Fixed at 10% total (9% interest + 1% bond fee)"
                     />
                   </Grid>
 
@@ -298,7 +294,7 @@ const LoanForm = () => {
 
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary">
-                  Interest Amount ({formData.interest_rate}%)
+                  Interest Amount (9%)
                 </Typography>
                 <Typography variant="h6" color="warning.main">
                   ₹{calculatedValues.interest_amount.toLocaleString()}
@@ -345,11 +341,11 @@ const LoanForm = () => {
               <Typography variant="caption" color="text.secondary">
                 * Total Loan = Amount entered (what customer must repay)
                 <br />
-                * Interest = 10% of Total Loan
+                * Initial deduction = 10% of Total Loan
                 <br />
-                * Net Disbursed = Total Loan - Interest (what customer receives)
+                * Split: 9% interest + 1% bond fee
                 <br />
-                * Note: Bond fee is a fixed processing charge
+                * Net Disbursed = Total Loan - (Interest + Bond Fee)
               </Typography>
             </Paper>
           </Grid>
@@ -422,7 +418,7 @@ const LoanForm = () => {
                 <Stack spacing={1.5}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="body2" color="text.secondary">
-                      Interest Amount ({formData.interest_rate || 0}% for {formData.tenure_months || 0} months):
+                      Interest Amount (9% component for {formData.tenure_months || 0} months):
                     </Typography>
                     <Typography variant="body1" fontWeight={600} color="warning.main">
                       ₹{calculatedValues.interest_amount.toLocaleString('en-IN')}
@@ -432,7 +428,7 @@ const LoanForm = () => {
 
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="body2" color="text.secondary">
-                      Bond Fee (Processing Charge - Non-refundable):
+                      Bond Fee (1% of Loan - Non-refundable):
                     </Typography>
                     <Typography variant="body1" fontWeight={600} color="info.main">
                       ₹{calculatedValues.bond_fee.toLocaleString('en-IN')}
@@ -455,10 +451,10 @@ const LoanForm = () => {
 
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="body1" fontWeight={600}>
-                      Total Deducted (Interest):
+                      Total Deducted (Interest + Bond Fee):
                     </Typography>
                     <Typography variant="h6" fontWeight={700} color="error.main">
-                      ₹{calculatedValues.interest_amount.toLocaleString('en-IN')}
+                      ₹{(calculatedValues.interest_amount + calculatedValues.bond_fee).toLocaleString('en-IN')}
                     </Typography>
                   </Stack>
                 </Stack>
@@ -472,11 +468,13 @@ const LoanForm = () => {
                     <br />
                     • Customer needs: ₹{calculatedValues.total_loan_amount.toLocaleString('en-IN')} to repay
                     <br />
-                    • Finance deducts {formData.tenure_months || 0} months interest upfront: ₹{calculatedValues.interest_amount.toLocaleString('en-IN')}
+                    • Bond Fee (1%): ₹{calculatedValues.bond_fee.toLocaleString('en-IN')} (non-refundable)
+                    <br />
+                    • Interest (9%): ₹{calculatedValues.interest_amount.toLocaleString('en-IN')}
+                    <br />
+                    • Total Deduction (10% = 9% interest + 1% bond fee): ₹{(calculatedValues.interest_amount + calculatedValues.bond_fee).toLocaleString('en-IN')}
                     <br />
                     • Customer receives: ₹{calculatedValues.net_disbursed_amount.toLocaleString('en-IN')}
-                    <br />
-                    • Bond fee (₹{calculatedValues.bond_fee.toLocaleString('en-IN')}) is a fixed processing charge and is non-refundable
                   </Typography>
                 </Alert>
               </Grid>
@@ -490,6 +488,8 @@ const LoanForm = () => {
 
 
 export default LoanForm;
+
+
 
 
 

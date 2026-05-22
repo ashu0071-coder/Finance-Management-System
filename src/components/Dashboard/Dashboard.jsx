@@ -14,6 +14,7 @@ import {
   InputAdornment,
   Tabs,
   Tab,
+  Button,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -23,6 +24,7 @@ import {
   Phone as PhoneIcon,
   Warning as WarningIcon,
   Search as SearchIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { getLoans } from '../../services/loanService';
@@ -31,6 +33,8 @@ import { getSettings } from '../../services/settingsService';
 import { calculatePenalty } from '../../utils/calculations';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 
 export default function Dashboard() {
@@ -106,12 +110,16 @@ export default function Dashboard() {
   );
 
 
-  const openLoans = loans?.filter((l) => l.status !== 'closed') ?? [];
-  const totalBorrowed = openLoans.reduce(
+  // Correct remaining finance: pool - all disbursed + all repaid (total_paid on each loan)
+  const totalAllDisbursed = loans.reduce(
     (sum, l) => sum + Number(l.net_disbursed_amount || 0),
     0
   );
-  const remainingFinanceAmount = Math.max(totalFinanceAmount - totalBorrowed, 0);
+  const totalAllPaid = loans.reduce(
+    (sum, l) => sum + Number(l.total_paid || 0),
+    0
+  );
+  const remainingFinanceAmount = Math.max(totalFinanceAmount - totalAllDisbursed + totalAllPaid, 0);
 
 
   // Filter loans based on active tab
@@ -150,17 +158,125 @@ export default function Dashboard() {
   };
 
 
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('All Loans Report', pageWidth / 2, 15, { align: 'center' });
+
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated on: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, pageWidth / 2, 22, { align: 'center' });
+    doc.text(`Total Loans: ${loans.length}  |  Total Finance: \u20B9${totalFinanceAmount.toLocaleString('en-IN')}  |  Remaining: \u20B9${remainingFinanceAmount.toLocaleString('en-IN')}`, pageWidth / 2, 28, { align: 'center' });
+    doc.setFontSize(8);
+    doc.text('All amounts are in INR', pageWidth / 2, 33, { align: 'center' });
+
+
+    const tableData = loans.map((loan) => [
+      loan.loan_number || '-',
+      loan.customers?.name || '-',
+      loan.customers?.mobile_number || '-',
+      `${Math.round(Number(loan.total_loan_amount)).toLocaleString('en-IN')}`,
+      `${Math.round(Number(loan.bond_fee || 0)).toLocaleString('en-IN')}`,
+      `${Math.round(Number(loan.interest_amount || 0)).toLocaleString('en-IN')}`,
+      `${Math.round(Number(loan.net_disbursed_amount || 0)).toLocaleString('en-IN')}`,
+      `${Math.round(Number(loan.outstanding_amount || 0)).toLocaleString('en-IN')}`,
+      `${Math.round(Number(loan.total_paid || 0)).toLocaleString('en-IN')}`,
+      loan.status?.toUpperCase() || '-',
+      loan.start_date ? format(new Date(loan.start_date), 'dd/MM/yyyy') : '-',
+      loan.current_due_date ? format(new Date(loan.current_due_date), 'dd/MM/yyyy') : '-',
+      loan.closure_date ? format(new Date(loan.closure_date), 'dd/MM/yyyy') : '-',
+    ]);
+
+
+    autoTable(doc, {
+      startY: 38,
+      head: [[
+        'Loan No',
+        'Customer',
+        'Mobile',
+        'Loan Amt',
+        'Bond Fee',
+        'Interest',
+        'Disbursed',
+        'Outstanding',
+        'Paid',
+        'Status',
+        'Start Date',
+        'Due Date',
+        'Closed On',
+      ]],
+      body: tableData,
+      margin: { top: 38, right: 8, bottom: 8, left: 8 },
+      tableWidth: 'auto',
+      styles: {
+        fontSize: 7,
+        cellPadding: 1.8,
+        overflow: 'linebreak',
+        halign: 'center',
+        valign: 'middle',
+      },
+      headStyles: {
+        fillColor: [25, 118, 210],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 7,
+        cellPadding: 2,
+        halign: 'center',
+        valign: 'middle',
+      },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      columnStyles: {
+        0: { cellWidth: 24, halign: 'left' },
+        1: { cellWidth: 28, halign: 'left' },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 18 },
+        4: { cellWidth: 18 },
+        5: { cellWidth: 18 },
+        6: { cellWidth: 18 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 18 },
+        9: { cellWidth: 18 },
+        10: { cellWidth: 20 },
+        11: { cellWidth: 20 },
+        12: { cellWidth: 17 },
+      },
+    });
+
+
+    doc.save(`loans-report-${format(new Date(), 'dd-MM-yyyy')}.pdf`);
+  };
+
+
   return (
     <Box sx={{ pb: { xs: 10, sm: 4 } }}>
       <Stack spacing={3}>
         {/* Header */}
         <Box>
-          <Typography variant="h4" fontWeight={700} gutterBottom>
-            Dashboard
-          </Typography>
-          <Typography color="text.secondary">
-            {format(new Date(), 'EEEE, MMMM d, yyyy')}
-          </Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
+            <Box>
+              <Typography variant="h4" fontWeight={700} gutterBottom>
+                Dashboard
+              </Typography>
+              <Typography color="text.secondary">
+                {format(new Date(), 'EEEE, MMMM d, yyyy')}
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<PdfIcon />}
+              onClick={handleDownloadPDF}
+              sx={{ mt: { xs: 0, sm: 0.5 }, flexShrink: 0 }}
+            >
+              Download All Loans PDF
+            </Button>
+          </Stack>
         </Box>
 
 
@@ -310,10 +426,13 @@ export default function Dashboard() {
               </Typography>
               <Divider sx={{ my: 1.5 }} />
               <Typography variant="body2" color="text.secondary">
-                Borrowed: ₹{totalBorrowed.toLocaleString('en-IN')}
+                Disbursed: ₹{Math.round(totalAllDisbursed).toLocaleString('en-IN')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Collected Back: ₹{Math.round(totalAllPaid).toLocaleString('en-IN')}
               </Typography>
               <Typography variant="body1" color="success.main" fontWeight={700}>
-                Left in Finance: ₹{remainingFinanceAmount.toLocaleString('en-IN')}
+                Left in Finance: ₹{Math.round(remainingFinanceAmount).toLocaleString('en-IN')}
               </Typography>
             </Paper>
           </div>
@@ -654,6 +773,8 @@ export default function Dashboard() {
     </Box>
   );
 }
+
+
 
 
 

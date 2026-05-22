@@ -11,18 +11,20 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.7",
-    "@mui/material": "^5.15.10",
-    "@mui/icons-material": "^5.15.10",
-    "@mui/x-data-grid": "^6.19.5",
-    "@mui/x-date-pickers": "^6.19.5",
     "@emotion/react": "^11.11.3",
     "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.15.10",
+    "@mui/material": "^5.15.10",
+    "@mui/x-data-grid": "^6.19.5",
+    "@mui/x-date-pickers": "^6.19.5",
+    "@supabase/supabase-js": "^2.39.7",
+    "date-fns": "^2.30.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.0",
-    "date-fns": "^2.30.0",
-    "prop-types": "^15.8.1"
+    "react-router-dom": "^6.22.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.55",
