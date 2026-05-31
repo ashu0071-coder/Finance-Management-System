@@ -1,5 +1,5 @@
 import { Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, AppBar, Typography, IconButton, useTheme, useMediaQuery, BottomNavigation, BottomNavigationAction, Paper, Divider, Button } from '@mui/material';
-import { Menu as MenuIcon, Home as HomeIcon, People as PeopleIcon, AccountBalance as LoansIcon, Settings as SettingsIcon, Logout as LogoutIcon, Business as BusinessIcon } from '@mui/icons-material';
+import { Menu as MenuIcon, Home as HomeIcon, People as PeopleIcon, AccountBalance as LoansIcon, Settings as SettingsIcon, Logout as LogoutIcon, Business as BusinessIcon, ReceiptLong as DailyTransIcon } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import PropTypes from 'prop-types';
@@ -55,6 +55,7 @@ export default function Layout({ children }) {
         { text: 'Dashboard', icon: <HomeIcon />, path: '/admin/dashboard' },
         { text: 'Customers', icon: <PeopleIcon />, path: '/admin/customers' },
         { text: 'Loans', icon: <LoansIcon />, path: '/admin/loans' },
+        { text: 'DailyTrans', icon: <DailyTransIcon />, path: '/admin/daily-trans' },
         { text: 'Settings', icon: <SettingsIcon />, path: '/admin/settings' },
       ];
     } else if (isCustomer) {
@@ -69,6 +70,7 @@ export default function Layout({ children }) {
         { text: 'Dashboard', icon: <HomeIcon />, path: '/finance/dashboard' },
         { text: 'Borrowers', icon: <PeopleIcon />, path: '/finance/customers' },
         { text: 'Loans', icon: <LoansIcon />, path: '/finance/loans' },
+        { text: 'DailyTrans', icon: <DailyTransIcon />, path: '/finance/daily-trans' },
         { text: 'Settings', icon: <SettingsIcon />, path: '/finance/settings' },
       ];
     }
@@ -84,6 +86,7 @@ export default function Layout({ children }) {
     if (location.pathname.startsWith(`${basePath}/finance-companies`)) return `${basePath}/finance-companies`;
     if (location.pathname.startsWith(`${basePath}/customers`)) return `${basePath}/customers`;
     if (location.pathname.startsWith(`${basePath}/loans`)) return `${basePath}/loans`;
+    if (location.pathname.startsWith(`${basePath}/daily-trans`)) return `${basePath}/daily-trans`;
     if (location.pathname.startsWith(`${basePath}/settings`)) return `${basePath}/settings`;
     return `${basePath}/dashboard`;
   })();
@@ -265,8 +268,3 @@ export default function Layout({ children }) {
 Layout.propTypes = {
   children: PropTypes.node.isRequired,
 };
-
-
-
-
-

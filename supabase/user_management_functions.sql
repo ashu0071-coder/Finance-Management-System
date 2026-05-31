@@ -34,6 +34,3 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION create_finance_user(TEXT, TEXT, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION update_user_password(TEXT, TEXT) TO anon, authenticated;
-
-
-

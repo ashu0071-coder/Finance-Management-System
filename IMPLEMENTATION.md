@@ -386,6 +386,3 @@ The Loan Management System is fully functional and ready for:
 
 
 Last Updated: March 29, 2026
-
-
-

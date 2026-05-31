@@ -271,6 +271,3 @@ CREATE TRIGGER users_updated_at
 -- Grant necessary permissions
 GRANT ALL ON users TO authenticated;
 GRANT ALL ON users TO anon;
-
-
-

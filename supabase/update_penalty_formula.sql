@@ -58,6 +58,3 @@ $$ LANGUAGE plpgsql;
 
 -- Add comment
 COMMENT ON FUNCTION calculate_penalty IS 'Calculate penalty using annual rate: (Loan Amount × Annual Rate × Days Overdue) / 365';
-
-
-

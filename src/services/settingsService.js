@@ -60,6 +60,3 @@ export const getSettingByKey = async (key) => {
   if (error) throw error;
   return data;
 };
-
-
-

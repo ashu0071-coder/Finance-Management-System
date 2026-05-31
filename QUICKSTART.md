@@ -132,6 +132,3 @@ Open http://localhost:5173
 
 
 **Happy Lending! 💰**
-
-
-

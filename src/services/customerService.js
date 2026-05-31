@@ -148,6 +148,3 @@ export const searchCustomers = async (searchTerm) => {
   if (error) throw error;
   return data;
 };
-
-
-

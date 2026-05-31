@@ -52,6 +52,7 @@ const PaymentForm = () => {
 
 
   const [refundAmount, setRefundAmount] = useState(0);
+  const [adjustedPenalty, setAdjustedPenalty] = useState(0);
 
 
   useEffect(() => {
@@ -84,20 +85,33 @@ const PaymentForm = () => {
 
 
   useEffect(() => {
+    if (!loan || !formData.payment_date) {
+      return;
+    }
+
+
+    const overdueForDate = new Date(loan.current_due_date) < new Date(formData.payment_date) && loan.status !== 'closed';
+    const calculatedPenalty = overdueForDate
+      ? calculatePenalty(loan.outstanding_amount, loan.current_due_date, formData.payment_date, penaltyRate)
+      : loan.penalty_amount || 0;
+
+
+    setAdjustedPenalty(Math.round(Number(calculatedPenalty) || 0));
+  }, [loan, formData.payment_date, penaltyRate]);
+
+
+  useEffect(() => {
     if (loan && formData.payment_type === 'full') {
       // Calculate the actual amount to collect from the borrower.
       // For early settlement, borrower pays outstanding minus refundable unused interest.
-      const isOverdue = new Date(loan.current_due_date) < new Date(formData.payment_date) && loan.status !== 'closed';
-      const penalty = isOverdue
-        ? calculatePenalty(loan.total_loan_amount, loan.current_due_date, formData.payment_date, penaltyRate)
-        : loan.penalty_amount || 0;
+      const penalty = Math.max(0, Math.round(Number.parseFloat(adjustedPenalty || 0)));
       const totalAmount = Math.max(0, loan.outstanding_amount + penalty - refundAmount);
       setFormData(prev => ({
         ...prev,
         amount: totalAmount.toString(),
       }));
     }
-  }, [formData.payment_type, loan, penaltyRate, refundAmount, formData.payment_date]);
+  }, [formData.payment_type, loan, adjustedPenalty, refundAmount]);
 
 
   const fetchLoan = async () => {
@@ -169,12 +183,16 @@ const PaymentForm = () => {
 
   const netPayment = Number.parseFloat(formData.amount || 0) + refundAmount;
   const isEarlyPayment = new Date(formData.payment_date) < new Date(loan.current_due_date);
+  const appliedPenalty = Math.max(0, Math.round(Number.parseFloat(adjustedPenalty || 0)));
  
   // Calculate real-time penalty for overdue loans
-  const isOverdue = new Date(loan.current_due_date) < new Date() && loan.status !== 'closed';
-  const currentPenalty = isOverdue
-    ? calculatePenalty(loan.total_loan_amount, loan.current_due_date, new Date(), penaltyRate)
-    : loan.penalty_amount || 0;
+  // Penalty must always be calculated on remaining outstanding amount.
+  const isOverdue = new Date(loan.current_due_date) < new Date(formData.payment_date) && loan.status !== 'closed';
+  const penaltyBase = loan.outstanding_amount;
+
+
+  // For partial payments, show what remains after this payment
+  const remainingAfterPartial = Math.max(0, loan.outstanding_amount - Number.parseFloat(formData.amount || 0));
 
 
   return (
@@ -191,17 +209,17 @@ const PaymentForm = () => {
       )}
 
 
-      {isOverdue && currentPenalty > 0 && (
+      {isOverdue && appliedPenalty > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          <strong>Overdue Payment!</strong> This loan is overdue since {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}.
-          A penalty of ₹{currentPenalty.toLocaleString()} has been added to the total amount.
+          <strong>Overdue Payment!</strong> This loan is overdue since {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}.
+          A penalty of ₹{appliedPenalty.toLocaleString()} has been added to the total amount.
         </Alert>
       )}
 
 
       {isEarlyPayment && refundAmount > 0 && (
         <Alert severity="success" sx={{ mb: 2 }}>
-          <strong>Early Payment Benefit!</strong> Paying before the due date ({format(new Date(loan.current_due_date), 'dd/MM/yyyy')})
+          <strong>Early Payment Benefit!</strong> Paying before the due date ({format(new Date(loan.current_due_date), 'dd/MMM/yyyy')})
           will save you ₹{refundAmount.toLocaleString()} in interest!
         </Alert>
       )}
@@ -241,7 +259,8 @@ const PaymentForm = () => {
                         label="Payment Date"
                         value={formData.payment_date}
                         onChange={(date) => handleChange('payment_date', date)}
-                        inputFormat="dd/MM/yyyy"
+                        inputFormat="dd/MMM/yyyy"
+                        toolbarFormat="dd/MMM/yyyy"
                         renderInput={(params) => <TextField {...params} fullWidth required />}
                       />
                     </LocalizationProvider>
@@ -259,11 +278,11 @@ const PaymentForm = () => {
                       onWheel={(e) => e.target.blur()}
                       inputProps={{
                         min: 0,
-                        max: loan.outstanding_amount + currentPenalty,
+                        max: loan.outstanding_amount + appliedPenalty,
                       }}
                       InputProps={{ startAdornment: '₹' }}
                       disabled={formData.payment_type === 'full'}
-                      helperText={isOverdue ? `Includes penalty: ₹${currentPenalty.toLocaleString()}` : ''}
+                      helperText={isOverdue ? `Includes penalty: ₹${appliedPenalty.toLocaleString()}` : ''}
                     />
                   </Grid>
 
@@ -351,20 +370,30 @@ const PaymentForm = () => {
 
 
               <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Penalty Amount
                 </Typography>
-                <Typography variant="body1" color="warning.main" fontWeight="bold">
-                  ₹{Number(currentPenalty).toLocaleString()}
-                </Typography>
-                {isOverdue && currentPenalty > 0 && (
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Penalty Adjustment"
+                  value={adjustedPenalty}
+                  onChange={(e) => setAdjustedPenalty(e.target.value)}
+                  onWheel={(e) => e.target.blur()}
+                  inputProps={{ min: 0 }}
+                  InputProps={{ startAdornment: '₹' }}
+                  helperText={
+                    isOverdue
+                      ? `Default: ₹${calculatePenalty(penaltyBase, loan.current_due_date, formData.payment_date, penaltyRate).toLocaleString()} (editable)`
+                      : 'Editable if you want to add manual adjustment'
+                  }
+                />
+                {isOverdue && appliedPenalty > 0 && (
                   <Typography variant="caption" color="warning.dark" sx={{ display: 'block', mt: 0.5 }}>
-                    Due date passed: {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}
+                    Due date passed: {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                   </Typography>
                 )}
               </Box>
-
-
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary">
                   Outstanding Amount
@@ -383,7 +412,7 @@ const PaymentForm = () => {
                   Total Amount Due (Outstanding + Penalty)
                 </Typography>
                 <Typography variant="h5" color="error.main" fontWeight="bold">
-                  ₹{Number(loan.outstanding_amount + currentPenalty).toLocaleString()}
+                  ₹{Number(loan.outstanding_amount + appliedPenalty).toLocaleString()}
                 </Typography>
               </Box>
             </Paper>
@@ -395,56 +424,117 @@ const PaymentForm = () => {
               </Typography>
               <Divider sx={{ my: 2 }} />
              
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Borrower Pays
-                </Typography>
-                <Typography variant="h6">
-                  ₹{Number(formData.amount || 0).toLocaleString()}
-                </Typography>
-              </Box>
-
-
-              {isEarlyPayment && refundAmount > 0 && (
+              {formData.payment_type === 'partial' && (
                 <>
                   <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" color="success.dark">
-                      Early Payment Refund 🎉
+                    <Typography variant="body2" color="text.secondary" fontWeight="bold">
+                      Current Outstanding Amount
                     </Typography>
-                    <Typography variant="h6" color="text.secondary">
-                      ₹{refundAmount.toLocaleString()}
+                    <Typography variant="h6" color="error.main">
+                      ₹{Number(loan.outstanding_amount).toLocaleString()}
                     </Typography>
                   </Box>
-                  <Alert severity="success" sx={{ mb: 2 }}>
-                    Great! Paying early saves you ₹{refundAmount.toLocaleString()} in interest.
-                    You only need to pay ₹{Number(formData.amount || 0).toLocaleString()} instead of ₹{netPayment.toLocaleString()}.
+
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary" fontWeight="bold">
+                      Penalty on Remaining Amount
+                    </Typography>
+                    <Typography variant="h6" color="warning.main">
+                      ₹{appliedPenalty.toLocaleString()}
+                    </Typography>
+                    {isOverdue && (
+                      <Typography variant="caption" color="warning.dark">
+                        (Calculated on ₹{penaltyBase.toLocaleString()} remaining @ {penaltyRate}% annual rate)
+                      </Typography>
+                    )}
+                  </Box>
+
+
+                  <Divider sx={{ my: 2 }} />
+
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Payment Amount
+                    </Typography>
+                    <Typography variant="h6">
+                      ₹{Number(formData.amount || 0).toLocaleString()}
+                    </Typography>
+                  </Box>
+
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary" fontWeight="bold">
+                      Remaining Balance After Payment
+                    </Typography>
+                    <Typography variant="h5" color="error.main" fontWeight="bold">
+                      ₹{remainingAfterPartial.toLocaleString()}
+                    </Typography>
+                  </Box>
+
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary" fontWeight="bold">
+                      Total Due (Remaining + Penalty)
+                    </Typography>
+                    <Typography variant="h5" color="error.main" fontWeight="bold">
+                      ₹{(remainingAfterPartial + appliedPenalty).toLocaleString()}
+                    </Typography>
+                  </Box>
+
+
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    After this partial payment, borrower still owes ₹{remainingAfterPartial.toLocaleString()} plus ₹{appliedPenalty.toLocaleString()} penalty.
                   </Alert>
                 </>
               )}
 
 
-              <Divider sx={{ my: 2 }} />
+              {formData.payment_type === 'full' && (
+                <>
+                  {isEarlyPayment && refundAmount > 0 && (
+                    <>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="success.dark">
+                          Early Payment Refund 🎉
+                        </Typography>
+                        <Typography variant="h6" color="text.secondary">
+                          ₹{refundAmount.toLocaleString()}
+                        </Typography>
+                      </Box>
+                      <Alert severity="success" sx={{ mb: 2 }}>
+                        Great! Paying early saves you ₹{refundAmount.toLocaleString()} in interest.
+                        You only need to pay ₹{Number(formData.amount || 0).toLocaleString()} instead of ₹{netPayment.toLocaleString()}.
+                      </Alert>
+                    </>
+                  )}
 
 
-              <Box>
-                <Typography variant="body2" color="text.secondary" fontWeight="bold">
-                  {isEarlyPayment ? 'Settlement Credit Applied To Loan' : 'Payment Applied To Loan'}
-                </Typography>
-                <Typography variant="h4" color={isEarlyPayment ? 'text.secondary' : 'primary'} fontWeight="bold">
-                  ₹{netPayment.toLocaleString()}
-                </Typography>
-                {isEarlyPayment && (
-                  <Typography variant="caption" color="success.dark" sx={{ display: 'block', mt: 0.5 }}>
-                    Borrower pays less, but the loan still gets full credit including the waived interest.
-                  </Typography>
-                )}
-              </Box>
+                  <Divider sx={{ my: 2 }} />
 
 
-              {formData.payment_type === 'full' && netPayment > 0 && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  This will close the loan.
-                </Alert>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" fontWeight="bold">
+                      {isEarlyPayment ? 'Settlement Credit Applied To Loan' : 'Payment Applied To Loan'}
+                    </Typography>
+                    <Typography variant="h4" color={isEarlyPayment ? 'text.secondary' : 'primary'} fontWeight="bold">
+                      ₹{netPayment.toLocaleString()}
+                    </Typography>
+                    {isEarlyPayment && (
+                      <Typography variant="caption" color="success.dark" sx={{ display: 'block', mt: 0.5 }}>
+                        Borrower pays less, but the loan still gets full credit including the waived interest.
+                      </Typography>
+                    )}
+                  </Box>
+
+
+                  {formData.payment_type === 'full' && netPayment > 0 && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      This will close the loan.
+                    </Alert>
+                  )}
+                </>
               )}
             </Paper>
           </Grid>
@@ -476,8 +566,3 @@ const PaymentForm = () => {
 
 
 export default PaymentForm;
-
-
-
-
-

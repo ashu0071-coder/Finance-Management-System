@@ -17,6 +17,3 @@ SET password_hash = crypt('Asif@123', gen_salt('bf'));
 SELECT id, email, role, created_at
 FROM users
 WHERE email = 'asiftahashildar0071@gmail.com';
-
-
-

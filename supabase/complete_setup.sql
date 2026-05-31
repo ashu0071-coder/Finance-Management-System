@@ -102,6 +102,3 @@ ON CONFLICT (email) DO NOTHING;
 -- Step 13: Verify setup
 SELECT 'Users table exists' as status, COUNT(*) as user_count FROM users;
 SELECT id, email, role, created_at FROM users ORDER BY created_at;
-
-
-

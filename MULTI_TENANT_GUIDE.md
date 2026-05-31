@@ -215,6 +215,3 @@ INSERT INTO users (
 
 
 Would you like me to create these components now?
-
-
-

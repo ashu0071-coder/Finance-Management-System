@@ -145,6 +145,3 @@ FROM loans l
 JOIN customers c ON l.customer_id = c.id
 WHERE c.name LIKE '%Test Customer%'
 ORDER BY l.created_at DESC;
-
-
-

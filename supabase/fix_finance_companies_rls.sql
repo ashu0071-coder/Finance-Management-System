@@ -10,6 +10,3 @@ GRANT ALL ON finance_companies TO authenticated;
 -- Ensure anon has permissions on users table for creating finance users
 GRANT ALL ON users TO anon;
 GRANT ALL ON users TO authenticated;
-
-
-

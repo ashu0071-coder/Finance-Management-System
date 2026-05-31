@@ -86,6 +86,3 @@ GRANT EXECUTE ON FUNCTION create_finance_member_user TO postgres;
 
 
 COMMENT ON COLUMN finance_companies.member_email IS 'Email for finance member (read-only access)';
-
-
-

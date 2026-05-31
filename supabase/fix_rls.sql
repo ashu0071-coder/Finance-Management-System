@@ -37,6 +37,3 @@ SELECT tablename, rowsecurity
 FROM pg_tables
 WHERE schemaname = 'public'
 AND tablename IN ('customers', 'loans', 'payments', 'settings');
-
-
-

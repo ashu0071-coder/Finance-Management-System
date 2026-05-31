@@ -60,6 +60,3 @@ SELECT
   '✓ User exists and should be accessible via API' as status
 FROM users
 WHERE email = 'asiftahashildar0071@gmail.com';
-
-
-

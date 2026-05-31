@@ -361,7 +361,8 @@ export default function CustomerForm() {
                               label="Start Date"
                               value={loanData.start_date}
                               onChange={(e) => handleLoanChange('start_date', e)}
-                              inputFormat="dd/MM/yyyy"
+                              inputFormat="dd/MMM/yyyy"
+                              toolbarFormat="dd/MMM/yyyy"
                               renderInput={(params) => <TextField {...params} fullWidth />}
                             />
                           </LocalizationProvider>
@@ -478,6 +479,3 @@ export default function CustomerForm() {
     </Box>
   );
 }
-
-
-

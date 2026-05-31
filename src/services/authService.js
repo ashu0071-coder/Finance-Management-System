@@ -179,6 +179,3 @@ export const isCustomer = () => {
 export const getCurrentUser = () => {
   return getSession();
 };
-
-
-

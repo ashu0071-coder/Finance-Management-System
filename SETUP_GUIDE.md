@@ -328,6 +328,3 @@ After successful setup:
 
 
 **Congratulations! Your Loan Management System is ready to use.** 🎉
-
-
-

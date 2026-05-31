@@ -12,6 +12,7 @@ import LoanList from './components/Loans/LoanList';
 import LoanForm from './components/Loans/LoanForm';
 import LoanDetail from './components/Loans/LoanDetail';
 import PaymentForm from './components/Payments/PaymentForm';
+import DailyTrans from './components/DailyTrans/DailyTrans';
 import Settings from './components/Settings/Settings';
 import FinanceCompanyList from './components/FinanceCompanies/FinanceCompanyList';
 import FinanceCompanyForm from './components/FinanceCompanies/FinanceCompanyForm';
@@ -51,6 +52,7 @@ function App() {
                   <Route path="loans/new" element={<LoanForm />} />
                   <Route path="loans/:id" element={<LoanDetail />} />
                   <Route path="loans/:id/payment" element={<PaymentForm />} />
+                  <Route path="daily-trans" element={<DailyTrans />} />
                  
                   {/* Settings */}
                   <Route path="settings" element={<Settings />} />
@@ -109,6 +111,11 @@ function App() {
                       <PaymentForm />
                     </ProtectedRoute>
                   } />
+                  <Route path="daily-trans" element={
+                    <ProtectedRoute requiredRole="finance_manager">
+                      <DailyTrans />
+                    </ProtectedRoute>
+                  } />
                  
                   {/* Settings - Only for finance_manager and finance */}
                   <Route path="settings" element={
@@ -139,6 +146,3 @@ function App() {
 
 
 export default App;
-
-
-

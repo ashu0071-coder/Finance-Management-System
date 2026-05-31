@@ -58,26 +58,35 @@ export const calculateEarlyPaymentRefund = (
   bondFee = 0,
   fallbackBondFee = 0
 ) => {
-  // Calculate months elapsed from start to payment date
-  const monthsElapsed = calculateMonthsElapsed(startDate, paymentDate);
- 
-  // If paid after or at the tenure period, no refund
-  if (monthsElapsed >= tenureMonths) {
+  const start = new Date(startDate);
+  const paidOn = new Date(paymentDate);
+
+
+  // If payment date is before start date, treat elapsed days as 0.
+  const elapsedDays = Math.max(
+    0,
+    Math.floor((paidOn - start) / (1000 * 60 * 60 * 24))
+  );
+
+
+  // Daily model: tenureMonths * 30 days (business rule requested by user).
+  const totalTenureDays = Math.max(tenureMonths * 30, 1);
+
+
+  // If paid on/after full tenure, no refund.
+  if (elapsedDays >= totalTenureDays) {
     return 0;
   }
- 
-  // interestAmount already stores only the interest component.
-  // Bond fee is stored separately and remains non-refundable.
-  const refundableInterest = Math.max(interestAmount, 0);
- 
-  // Calculate monthly interest from refundable portion only
-  const monthlyInterest = refundableInterest / tenureMonths;
- 
-  // Calculate months remaining (unused)
-  const monthsRemaining = tenureMonths - monthsElapsed;
- 
-  // Refund = monthly interest × months remaining
-  return Math.round(monthlyInterest * monthsRemaining);
+
+
+  // interestAmount stores only interest component; bond fee remains non-refundable.
+  const totalInterest = Math.max(interestAmount, 0);
+  const dailyInterest = totalInterest / totalTenureDays;
+  const consumedInterest = dailyInterest * elapsedDays;
+  const refundableInterest = Math.max(totalInterest - consumedInterest, 0);
+
+
+  return Math.round(refundableInterest);
 };
 
 
@@ -175,11 +184,12 @@ export const formatCurrency = (amount) => {
  */
 export const formatDate = (date) => {
   if (!date) return '';
-  return new Date(date).toLocaleDateString('en-GB', {
+  const formatted = new Date(date).toLocaleDateString('en-GB', {
     year: 'numeric',
-    month: '2-digit',
+    month: 'short',
     day: '2-digit',
   });
+  return formatted.replaceAll(',', '').replace(/\s+/g, '/');
 };
 
 
@@ -260,8 +270,3 @@ export const calculateLoanDetails = (totalLoanAmount, interestRate, tenureMonths
     monthly_interest,
   };
 };
-
-
-
-
-

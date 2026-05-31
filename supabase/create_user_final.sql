@@ -62,6 +62,3 @@ SELECT
   'SUCCESS! User created. You can now login.' as message
 FROM users
 WHERE email = 'asiftahashildar0071@gmail.com';
-
-
-

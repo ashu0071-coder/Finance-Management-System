@@ -286,7 +286,7 @@ const SuperAdminDashboard = () => {
                         <Box display="flex" alignItems="center" gap={1}>
                           <CalendarIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
                           <Typography variant="body2" color="text.secondary">
-                            Since {format(new Date(company.created_at), 'dd/MM/yyyy')}
+                            Since {format(new Date(company.created_at), 'dd/MMM/yyyy')}
                           </Typography>
                         </Box>
                       </Stack>
@@ -321,6 +321,3 @@ const SuperAdminDashboard = () => {
 
 
 export default SuperAdminDashboard;
-
-
-

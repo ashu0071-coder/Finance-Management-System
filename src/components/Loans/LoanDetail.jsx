@@ -349,7 +349,7 @@ const LoanDetail = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body1">
-                    {format(new Date(loan.start_date), 'dd/MM/yyyy')}
+                    {format(new Date(loan.start_date), 'dd/MMM/yyyy')}
                   </Typography>
                 </Grid>
                 <Grid item xs={6}>
@@ -357,7 +357,7 @@ const LoanDetail = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body1">
-                    {format(new Date(loan.original_due_date), 'dd/MM/yyyy')}
+                    {format(new Date(loan.original_due_date), 'dd/MMM/yyyy')}
                   </Typography>
                 </Grid>
                 <Grid item xs={6}>
@@ -365,7 +365,7 @@ const LoanDetail = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body1" color={isOverdue ? 'error' : 'inherit'} fontWeight="bold">
-                    {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}
+                    {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                     {isOverdue && ' (OVERDUE)'}
                   </Typography>
                 </Grid>
@@ -376,7 +376,7 @@ const LoanDetail = () => {
                     </Grid>
                     <Grid item xs={6}>
                       <Typography variant="body1" color="success.main">
-                        {format(new Date(loan.closure_date), 'dd/MM/yyyy')}
+                        {format(new Date(loan.closure_date), 'dd/MMM/yyyy')}
                       </Typography>
                     </Grid>
                   </>
@@ -466,7 +466,7 @@ const LoanDetail = () => {
                       {payments.map((payment) => (
                         <TableRow key={payment.id}>
                           <TableCell sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                            {format(new Date(payment.payment_date), 'dd/MM/yyyy')}
+                            {format(new Date(payment.payment_date), 'dd/MMM/yyyy')}
                           </TableCell>
                           <TableCell>
                             <Chip label={payment.payment_type.toUpperCase()} size="small" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' } }} />
@@ -529,6 +529,3 @@ const LoanDetail = () => {
 
 
 export default LoanDetail;
-
-
-

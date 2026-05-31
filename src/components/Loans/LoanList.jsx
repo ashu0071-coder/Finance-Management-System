@@ -353,7 +353,7 @@ const LoanList = () => {
                         Start Date
                       </Typography>
                       <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                        {format(new Date(loan.start_date), 'dd/MM/yyyy')}
+                        {format(new Date(loan.start_date), 'dd/MMM/yyyy')}
                       </Typography>
                     </Stack>
 
@@ -370,7 +370,7 @@ const LoanList = () => {
                           color={isOverdue ? 'error' : 'inherit'}
                           sx={{ fontSize: '0.875rem' }}
                         >
-                          {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}
+                          {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                         </Typography>
                       </Stack>
                     </Stack>
@@ -388,7 +388,7 @@ const LoanList = () => {
                           color="success.main"
                           sx={{ fontSize: '0.875rem' }}
                         >
-                          {format(new Date(loan.closure_date), 'dd/MM/yyyy')}
+                          {format(new Date(loan.closure_date), 'dd/MMM/yyyy')}
                         </Typography>
                       </Stack>
                     )}
@@ -478,6 +478,3 @@ const LoanList = () => {
 
 
 export default LoanList;
-
-
-

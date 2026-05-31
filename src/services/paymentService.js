@@ -59,7 +59,8 @@ export const createPayment = async (payment) => {
   if (loanError) throw loanError;
  
   const newTotalPaid = Number.parseFloat(loan.total_paid) + Number.parseFloat(payment.net_payment);
-  const newOutstanding = Number.parseFloat(loan.outstanding_amount) - Number.parseFloat(payment.net_payment);
+  // Derive outstanding from canonical values to avoid compounding drift.
+  const newOutstanding = Number.parseFloat(loan.total_loan_amount) - newTotalPaid;
  
   const updates = {
     total_paid: newTotalPaid,
@@ -159,6 +160,3 @@ export const getAllPayments = async () => {
   if (error) throw error;
   return data;
 };
-
-
-

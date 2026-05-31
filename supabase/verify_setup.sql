@@ -68,6 +68,3 @@ VALUES (
 ON CONFLICT (email) DO UPDATE
 SET password_hash = crypt('Asif@123', gen_salt('bf'))
 RETURNING id, email, role, 'User created/updated successfully!' as message;
-
-
-

@@ -3,9 +3,89 @@ import { getCurrentUser } from './authService';
 
 
 const FINANCE_ROLES = new Set(['finance', 'finance_manager', 'finance_member']);
+const BANK_AMOUNT_NAME_PREFIX = 'BANK_AMOUNT:';
 
 
 const isFinanceRole = (role) => FINANCE_ROLES.has(role);
+
+
+const toSafeNumber = (value) => {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+
+const getAvailableCashInHand = async (financeCompanyId) => {
+  let receiptsQuery = supabase
+    .from('daily_receipts')
+    .select('name, deposit_amount');
+
+
+  let paymentsQuery = supabase
+    .from('daily_payments')
+    .select('amount');
+
+
+  let loansQuery = supabase
+    .from('loans')
+    .select('total_loan_amount, net_disbursed_amount, total_paid, outstanding_amount');
+
+
+  if (financeCompanyId) {
+    receiptsQuery = receiptsQuery.eq('finance_company_id', financeCompanyId);
+    paymentsQuery = paymentsQuery.eq('finance_company_id', financeCompanyId);
+    loansQuery = loansQuery.eq('finance_company_id', financeCompanyId);
+  }
+
+
+  const [{ data: receipts, error: receiptsError }, { data: payments, error: paymentsError }, { data: loans, error: loansError }] = await Promise.all([
+    receiptsQuery,
+    paymentsQuery,
+    loansQuery,
+  ]);
+
+
+  if (receiptsError) throw receiptsError;
+  if (paymentsError) throw paymentsError;
+  if (loansError) throw loansError;
+
+
+  const totalDepositReceipts = (receipts || [])
+    .filter((record) => !String(record?.name || '').startsWith(BANK_AMOUNT_NAME_PREFIX))
+    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
+
+
+  const totalBankAmountReceipts = (receipts || [])
+    .filter((record) => String(record?.name || '').startsWith(BANK_AMOUNT_NAME_PREFIX))
+    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
+
+
+  const totalDailyPaymentOutflow = (payments || []).reduce(
+    (sum, record) => sum + toSafeNumber(record.amount),
+    0
+  );
+
+
+  const totalLoanOutflow = (loans || []).reduce(
+    (sum, loan) => sum + toSafeNumber(loan.outstanding_amount),
+    0
+  );
+
+
+  const totalLoanExtraCollection = (loans || []).reduce((sum, loan) => {
+    const loanAmount = toSafeNumber(loan.total_loan_amount);
+    const netDisbursed = toSafeNumber(loan.net_disbursed_amount);
+    const paid = toSafeNumber(loan.total_paid);
+
+
+    const upfrontDeduction = Math.max(0, loanAmount - netDisbursed);
+    const overCollection = Math.max(0, paid - loanAmount);
+    return sum + upfrontDeduction + overCollection;
+  }, 0);
+
+
+  return totalDepositReceipts + totalBankAmountReceipts - totalDailyPaymentOutflow - totalLoanOutflow + totalLoanExtraCollection;
+};
 
 
 /**
@@ -163,6 +243,34 @@ const extractNumberFromLoanNumber = (loanNumber) => {
  * Create new loan
  */
 export const createLoan = async (loan) => {
+  const currentUser = getCurrentUser();
+
+
+  if (isFinanceRole(currentUser?.role) && !currentUser?.finance_company_id) {
+    throw new Error('Access denied: No finance company assigned');
+  }
+
+
+  const targetFinanceCompanyId = loan.finance_company_id || currentUser?.finance_company_id || null;
+
+
+  const netDisbursed = toSafeNumber(loan.net_disbursed_amount);
+  const totalLoanAmount = toSafeNumber(loan.total_loan_amount);
+  const requiredDisbursedAmount = netDisbursed > 0 ? netDisbursed : totalLoanAmount;
+
+
+  if (requiredDisbursedAmount > 0) {
+    const availableCashInHand = await getAvailableCashInHand(targetFinanceCompanyId);
+
+
+    if (availableCashInHand < requiredDisbursedAmount) {
+      throw new Error(
+        `Insufficient cash in hand. Available ₹${Math.round(availableCashInHand).toLocaleString('en-IN')}, required ₹${Math.round(requiredDisbursedAmount).toLocaleString('en-IN')}.`
+      );
+    }
+  }
+
+
   // Generate loan number
   const loanNumber = await generateLoanNumber();
  
@@ -304,6 +412,3 @@ export const extendLoan = async (loanId, notes = '') => {
   if (updateError) throw updateError;
   return updatedLoan;
 };
-
-
-

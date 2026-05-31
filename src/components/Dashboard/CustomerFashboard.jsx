@@ -96,7 +96,7 @@ const CustomerDashboard = () => {
             Dashboard
           </Typography>
           <Typography color="text.secondary">
-            {format(new Date(), 'EEEE, MMMM d, yyyy')}
+            {format(new Date(), 'dd/MMM/yyyy')}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Logged in as: {user?.email}
@@ -329,7 +329,7 @@ const CustomerDashboard = () => {
                               Start Date
                             </Typography>
                             <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                              {format(new Date(loan.start_date), 'dd/MM/yyyy')}
+                              {format(new Date(loan.start_date), 'dd/MMM/yyyy')}
                             </Typography>
                           </Stack>
 
@@ -346,7 +346,7 @@ const CustomerDashboard = () => {
                                 color="error"
                                 sx={{ fontSize: '0.875rem' }}
                               >
-                                {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}
+                                {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                               </Typography>
                             </Stack>
                           </Stack>
@@ -475,12 +475,12 @@ const CustomerDashboard = () => {
                         <Divider sx={{ my: 0.8 }} />
                         <Stack direction="row" justifyContent="space-between">
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>Start Date</Typography>
-                          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>{format(new Date(loan.start_date), 'dd/MM/yyyy')}</Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>{format(new Date(loan.start_date), 'dd/MMM/yyyy')}</Typography>
                         </Stack>
                         <Stack direction="row" justifyContent="space-between">
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>Due Date</Typography>
                           <Typography variant="body2" fontWeight={500} sx={{ fontSize: '0.875rem' }}>
-                            {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}
+                            {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                           </Typography>
                         </Stack>
                       </Stack>
@@ -572,19 +572,19 @@ const CustomerDashboard = () => {
                         <Divider sx={{ my: 0.8 }} />
                         <Stack direction="row" justifyContent="space-between">
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>Start Date</Typography>
-                          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>{format(new Date(loan.start_date), 'dd/MM/yyyy')}</Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>{format(new Date(loan.start_date), 'dd/MMM/yyyy')}</Typography>
                         </Stack>
                         <Stack direction="row" justifyContent="space-between">
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>Due Date</Typography>
                           <Typography variant="body2" fontWeight={500} sx={{ fontSize: '0.875rem' }}>
-                            {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}
+                            {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                           </Typography>
                         </Stack>
                         {loan.closure_date && (
                           <Stack direction="row" justifyContent="space-between">
                             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>Closed On</Typography>
                             <Typography variant="body2" fontWeight={500} color="success.main" sx={{ fontSize: '0.875rem' }}>
-                              {format(new Date(loan.closure_date), 'dd/MM/yyyy')}
+                              {format(new Date(loan.closure_date), 'dd/MMM/yyyy')}
                             </Typography>
                           </Stack>
                         )}
@@ -618,6 +618,3 @@ const CustomerDashboard = () => {
 
 
 export default CustomerDashboard;
-
-
-

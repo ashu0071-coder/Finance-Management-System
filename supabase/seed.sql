@@ -77,6 +77,3 @@ SELECT
     'overdue'
 FROM customers c
 WHERE c.name = 'Alice Smith';
-
-
-

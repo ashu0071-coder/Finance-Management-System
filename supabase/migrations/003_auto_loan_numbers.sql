@@ -23,6 +23,3 @@ CREATE TRIGGER trigger_set_loan_number
     BEFORE INSERT ON loans
     FOR EACH ROW
     EXECUTE FUNCTION set_loan_number();
-
-
-

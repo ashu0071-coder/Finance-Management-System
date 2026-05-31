@@ -45,6 +45,3 @@ CREATE POLICY "Allow all operations" ON audit_log
 
 CREATE POLICY "Allow all operations" ON settings
     FOR ALL USING (true) WITH CHECK (true);
-
-
-

@@ -94,8 +94,9 @@ Finance Management/
 
 
 1. Create a new project at [supabase.com](https://supabase.com)
-2. Go to SQL Editor and run the migration file: `supabase/migrations/001_initial_schema.sql`
-3. Note your project URL and anon key from Project Settings > API
+2. Go to SQL Editor and run all migration files in order from `supabase/migrations`
+3. Make sure `supabase/migrations/005_explicit_data_api_grants.sql` is applied (required for explicit Data API exposure behavior)
+4. Note your project URL and anon key from Project Settings > API
 
 
 ### 2. Environment Configuration
@@ -214,6 +215,3 @@ MIT License - feel free to use this project for your needs.
 
 
 For issues or questions, please create an issue in the repository.
-
-
-

@@ -26,7 +26,7 @@ const Settings = () => {
     default_interest_rate: '',
     default_loan_tenure_months: '',
     penalty_rate_annual: '',
-    total_finance_amount: '',
+    cash_in_bank: '0',
   });
 
 
@@ -218,7 +218,7 @@ const Settings = () => {
 
 
             <Typography variant="h6" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' } }}>
-              Finance Fund Settings
+              Bank Balance Settings
             </Typography>
             <Divider sx={{ mb: 3 }} />
 
@@ -229,25 +229,17 @@ const Settings = () => {
                   fullWidth
                   required
                   type="number"
-                  label="Total Finance Amount (₹)"
-                  value={formData.total_finance_amount}
-                  onChange={(e) => handleChange('total_finance_amount', e.target.value)}
+                  label="Cash in Bank"
+                  value={formData.cash_in_bank}
+                  onChange={(e) => handleChange('cash_in_bank', e.target.value)}
                   onWheel={(e) => e.target.blur()}
                   inputProps={{ min: 0 }}
-                  helperText={settings.total_finance_amount?.description || 'Total capital available for lending'}
-                  size="large"
+                  helperText={settings.cash_in_bank?.description || 'Opening cash available in bank'}
                 />
               </Grid>
-
-
-              <Grid item xs={12}>
-                <Alert severity="info">
-                  <Typography variant="body2">
-                    Remaining finance is calculated in Dashboard as: Total Finance Amount - Borrowed Amount.
-                  </Typography>
-                </Alert>
-              </Grid>
             </Grid>
+
+
           </CardContent>
         </Card>
 
@@ -272,6 +264,3 @@ const Settings = () => {
 
 
 export default Settings;
-
-
-

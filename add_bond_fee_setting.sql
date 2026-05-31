@@ -1,5 +1,2 @@
 -- Add bond fee amount setting to database
 INSERT INTO settings (key, value, description) VALUES ('bond_fee_amount', '300', 'Fixed bond fee charged for each loan (processing charge)') ON CONFLICT (key) DO UPDATE SET value = '300', description = 'Fixed bond fee charged for each loan (processing charge)';
-
-
-

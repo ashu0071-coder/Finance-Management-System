@@ -73,6 +73,3 @@ SELECT
   'finance' as role,
   'Can only see their own borrowers/loans' as access,
   'Finance companies you create' as example;
-
-
-

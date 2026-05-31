@@ -18,8 +18,9 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { enGB } from 'date-fns/locale';
+import { getDailyPayments, getDailyReceipts } from '../../services/dailyTransService';
 import { getCustomers } from '../../services/customerService';
-import { createLoan } from '../../services/loanService';
+import { createLoan, getLoans } from '../../services/loanService';
 import { getSettings } from '../../services/settingsService';
 import { calculateLoanDetails } from '../../utils/calculations';
 import { addMonths } from 'date-fns';
@@ -39,6 +40,7 @@ const LoanForm = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [availableFinanceAmount, setAvailableFinanceAmount] = useState(0);
 
 
   const [formData, setFormData] = useState({
@@ -78,11 +80,24 @@ const LoanForm = () => {
   }, [formData.total_loan_amount, formData.tenure_months]);
 
 
+  const hasLoanAmount = Number(formData.total_loan_amount || 0) > 0;
+  const isFinanceInsufficient = hasLoanAmount && availableFinanceAmount < calculatedValues.net_disbursed_amount;
+  let availableFinanceColor = 'success.main';
+  if (availableFinanceAmount <= 0) {
+    availableFinanceColor = 'error.main';
+  } else if (isFinanceInsufficient) {
+    availableFinanceColor = 'warning.main';
+  }
+
+
   const fetchInitialData = async () => {
     try {
-      const [customersData, settingsData] = await Promise.all([
+      const [customersData, settingsData, loansData, receiptData, paymentData] = await Promise.all([
         getCustomers(),
         getSettings(),
+        getLoans(),
+        getDailyReceipts(),
+        getDailyPayments(),
       ]);
       setCustomers(customersData.filter(c => c.is_active));
      
@@ -100,6 +115,31 @@ const LoanForm = () => {
         interest_rate: String(TOTAL_UPFRONT_DEDUCTION_RATE),
         tenure_months: settingsMap.default_loan_tenure_months || '3',
       }));
+
+
+      const totalDepositReceipts = receiptData
+        .filter((record) => !String(record?.name || '').startsWith('BANK_AMOUNT:'))
+        .reduce((sum, record) => sum + (Number.parseFloat(record.deposit_amount) || 0), 0);
+      const totalBankAmountReceipts = receiptData
+        .filter((record) => String(record?.name || '').startsWith('BANK_AMOUNT:'))
+        .reduce((sum, record) => sum + (Number.parseFloat(record.deposit_amount) || 0), 0);
+      const totalDailyPaymentOutflow = paymentData.reduce((sum, record) => sum + (Number.parseFloat(record.amount) || 0), 0);
+      const totalLoanOutflow = loansData.reduce((sum, loan) => sum + (Number.parseFloat(loan.outstanding_amount) || 0), 0);
+      const totalLoanExtraCollection = loansData.reduce((sum, loan) => {
+        const loanAmount = Number.parseFloat(loan.total_loan_amount) || 0;
+        const netDisbursed = Number.parseFloat(loan.net_disbursed_amount) || 0;
+        const paid = Number.parseFloat(loan.total_paid) || 0;
+        const upfrontDeduction = Math.max(0, loanAmount - netDisbursed);
+        const overCollection = Math.max(0, paid - loanAmount);
+
+
+        return sum + upfrontDeduction + overCollection;
+      }, 0);
+
+
+      setAvailableFinanceAmount(
+        totalDepositReceipts + totalBankAmountReceipts - totalDailyPaymentOutflow - totalLoanOutflow + totalLoanExtraCollection
+      );
     } catch (err) {
       setError(err.message);
     }
@@ -113,8 +153,18 @@ const LoanForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+
+
+    if (isFinanceInsufficient) {
+      setError(
+        `Finance amount is not available. Available ₹${availableFinanceAmount.toLocaleString('en-IN')} but required ₹${Number(calculatedValues.net_disbursed_amount || 0).toLocaleString('en-IN')}.`
+      );
+      return;
+    }
+
+
+    setLoading(true);
 
 
     try {
@@ -163,6 +213,20 @@ const LoanForm = () => {
       )}
 
 
+      {hasLoanAmount && availableFinanceAmount <= 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Finance amount is not available right now. Available balance is ₹{availableFinanceAmount.toLocaleString('en-IN')}.
+        </Alert>
+      )}
+
+
+      {hasLoanAmount && availableFinanceAmount > 0 && availableFinanceAmount < calculatedValues.net_disbursed_amount && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Available finance amount is ₹{availableFinanceAmount.toLocaleString('en-IN')}, which is less than the required disbursement of ₹{Number(calculatedValues.net_disbursed_amount || 0).toLocaleString('en-IN')}.
+        </Alert>
+      )}
+
+
       <form onSubmit={handleSubmit}>
         <Grid container spacing={3}>
           <Grid item xs={12} md={8}>
@@ -198,7 +262,8 @@ const LoanForm = () => {
                         label="Start Date"
                         value={formData.start_date}
                         onChange={(date) => handleChange('start_date', date)}
-                        inputFormat="dd/MM/yyyy"
+                        inputFormat="dd/MMM/yyyy"
+                        toolbarFormat="dd/MMM/yyyy"
                         renderInput={(params) => <TextField {...params} fullWidth required />}
                       />
                     </LocalizationProvider>
@@ -327,6 +392,20 @@ const LoanForm = () => {
 
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary">
+                  Available Finance Amount
+                </Typography>
+                <Typography
+                  variant="h5"
+                  color={availableFinanceColor}
+                  fontWeight={700}
+                >
+                  ₹{availableFinanceAmount.toLocaleString('en-IN')}
+                </Typography>
+              </Box>
+
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
                   Customer Must Repay
                 </Typography>
                 <Typography variant="h5" color="error.main" fontWeight={700}>
@@ -357,7 +436,7 @@ const LoanForm = () => {
             type="submit"
             variant="contained"
             size="large"
-            disabled={loading || !formData.customer_id || !formData.total_loan_amount}
+            disabled={loading || !formData.customer_id || !formData.total_loan_amount || isFinanceInsufficient}
           >
             {loading ? 'Creating...' : 'Create Loan'}
           </Button>
@@ -475,6 +554,8 @@ const LoanForm = () => {
                     • Total Deduction (10% = 9% interest + 1% bond fee): ₹{(calculatedValues.interest_amount + calculatedValues.bond_fee).toLocaleString('en-IN')}
                     <br />
                     • Customer receives: ₹{calculatedValues.net_disbursed_amount.toLocaleString('en-IN')}
+                    <br />
+                    • Available finance: ₹{availableFinanceAmount.toLocaleString('en-IN')}
                   </Typography>
                 </Alert>
               </Grid>
@@ -488,8 +569,3 @@ const LoanForm = () => {
 
 
 export default LoanForm;
-
-
-
-
-

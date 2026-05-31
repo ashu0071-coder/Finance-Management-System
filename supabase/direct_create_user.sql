@@ -94,6 +94,3 @@ SELECT
   verify_user_password('asiftahashildar0071@gmail.com', 'Asif@123') as password_is_correct
 FROM users
 WHERE email = 'asiftahashildar0071@gmail.com';
-
-
-

@@ -30,11 +30,37 @@ import { useNavigate } from 'react-router-dom';
 import { getLoans } from '../../services/loanService';
 import { getCustomers } from '../../services/customerService';
 import { getSettings } from '../../services/settingsService';
+import { getDailyPayments, getDailyReceipts } from '../../services/dailyTransService';
 import { calculatePenalty } from '../../utils/calculations';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+
+const BANK_AMOUNT_NAME_PREFIX = 'BANK_AMOUNT:';
+
+
+const isBankAmountReceipt = (record) =>
+  typeof record?.name === 'string' && record.name.startsWith(BANK_AMOUNT_NAME_PREFIX);
+
+
+const toSafeNumber = (value) => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/[^0-9.-]/g, '');
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 
 export default function Dashboard() {
@@ -46,7 +72,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [penaltyRate, setPenaltyRate] = useState(80);
-  const [totalFinanceAmount, setTotalFinanceAmount] = useState(0);
+  const [cashInBankBase, setCashInBankBase] = useState(0);
+  const [dailyReceipts, setDailyReceipts] = useState([]);
+  const [dailyPayments, setDailyPayments] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // all, overdue, active, closed
 
@@ -59,23 +87,27 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [loansData, customersData, settingsData] = await Promise.all([
+      const [loansData, customersData, settingsData, receiptData, paymentData] = await Promise.all([
         getLoans(),
         getCustomers(),
         getSettings(),
+        getDailyReceipts(),
+        getDailyPayments(),
       ]);
       setLoans(loansData);
       setCustomers(customersData);
+      setDailyReceipts(receiptData);
+      setDailyPayments(paymentData);
      
       const penaltySetting = settingsData.find(s => s.key === 'penalty_rate_annual');
-      const totalFinanceSetting = settingsData.find(s => s.key === 'total_finance_amount');
       if (penaltySetting) {
         setPenaltyRate(Number.parseFloat(penaltySetting.value));
       }
-      if (totalFinanceSetting) {
-        const parsedTotalFinanceAmount = Number.parseFloat(totalFinanceSetting.value);
-        setTotalFinanceAmount(Number.isNaN(parsedTotalFinanceAmount) ? 0 : parsedTotalFinanceAmount);
-      }
+
+
+      const cashInBankSetting = settingsData.find((s) => s.key === 'cash_in_bank');
+      const parsedCashInBank = Number.parseFloat(cashInBankSetting?.value);
+      setCashInBankBase(Number.isFinite(parsedCashInBank) ? parsedCashInBank : 0);
      
       setError(null);
     } catch (err) {
@@ -99,27 +131,55 @@ export default function Dashboard() {
   const overdueLoans = loans?.filter((l) => l.status === 'overdue') ?? [];
   const closedLoans = loans?.filter((l) => l.status === 'closed') ?? [];
  
-  const totalOutstanding = activeLoans.reduce(
-    (sum, l) => sum + Number(l.outstanding_amount || 0),
-    0
-  );
- 
-  const totalDisbursed = loans.reduce(
-    (sum, l) => sum + Number(l.net_disbursed_amount || 0),
+  // Finance pool is now derived from daily transaction inflow/outflow and loan outflow.
+  const totalDepositReceipts = dailyReceipts
+    .filter((record) => !isBankAmountReceipt(record))
+    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
+  const totalBankAmountReceipts = dailyReceipts
+    .filter((record) => isBankAmountReceipt(record))
+    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
+  const totalReceiptInflow = totalDepositReceipts + totalBankAmountReceipts;
+
+
+  const totalDailyPaymentOutflow = dailyPayments.reduce(
+    (sum, record) => sum + toSafeNumber(record.amount),
     0
   );
 
 
-  // Correct remaining finance: pool - all disbursed + all repaid (total_paid on each loan)
-  const totalAllDisbursed = loans.reduce(
-    (sum, l) => sum + Number(l.net_disbursed_amount || 0),
+  const totalBankAccountPaymentInflow = dailyPayments.reduce((sum, record) => {
+    const paymentType = String(record.payment_type || '').trim().toLowerCase();
+    return paymentType === 'bank account' ? sum + toSafeNumber(record.amount) : sum;
+  }, 0);
+
+
+  // Use remaining outstanding balance so repayment automatically reduces loan outflow.
+  const totalLoanOutflow = loans.reduce(
+    (sum, loan) => sum + toSafeNumber(loan.outstanding_amount),
     0
   );
-  const totalAllPaid = loans.reduce(
-    (sum, l) => sum + Number(l.total_paid || 0),
-    0
-  );
-  const remainingFinanceAmount = Math.max(totalFinanceAmount - totalAllDisbursed + totalAllPaid, 0);
+
+
+  // Upfront deduction (interest + bond fee) and over-collection above
+  // total loan amount should be added back into finance.
+  const totalLoanExtraCollection = loans.reduce((sum, loan) => {
+    const netDisbursed = toSafeNumber(loan.net_disbursed_amount);
+    const paid = toSafeNumber(loan.total_paid);
+    const loanAmount = toSafeNumber(loan.total_loan_amount);
+
+
+    const upfrontDeduction = Math.max(0, loanAmount - netDisbursed);
+    const overCollection = Math.max(0, paid - loanAmount);
+
+
+    return sum + upfrontDeduction + overCollection;
+  }, 0);
+
+
+  const totalFinanceAmount = totalReceiptInflow;
+  const remainingFinanceAmount =
+    totalReceiptInflow - totalDailyPaymentOutflow - totalLoanOutflow + totalLoanExtraCollection;
+  const remainingCashInBank = cashInBankBase - totalBankAmountReceipts + totalBankAccountPaymentInflow;
 
 
   // Filter loans based on active tab
@@ -153,6 +213,32 @@ export default function Dashboard() {
   const filteredLoans = getFilteredLoans();
 
 
+  const getLivePenaltyAmount = (loan) => {
+    const storedPenalty = Math.max(0, Math.round(toSafeNumber(loan.penalty_amount)));
+    const dueDate = loan.current_due_date ? new Date(loan.current_due_date) : null;
+
+
+    if (!dueDate || Number.isNaN(dueDate.getTime())) {
+      return storedPenalty;
+    }
+
+
+    const isLoanOverdue = loan.status !== 'closed' && dueDate < new Date();
+    if (!isLoanOverdue) {
+      return storedPenalty;
+    }
+
+
+    const outstandingBase = Math.max(toSafeNumber(loan.outstanding_amount), 0);
+    const fallbackBase = Math.max(toSafeNumber(loan.total_loan_amount) - toSafeNumber(loan.total_paid), 0);
+    const penaltyBase = outstandingBase > 0 ? outstandingBase : fallbackBase;
+
+
+    const calculatedPenalty = calculatePenalty(penaltyBase, dueDate, new Date(), penaltyRate);
+    return Math.max(storedPenalty, Math.max(0, Math.round(Number(calculatedPenalty || 0))));
+  };
+
+
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
@@ -171,8 +257,8 @@ export default function Dashboard() {
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated on: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, pageWidth / 2, 22, { align: 'center' });
-    doc.text(`Total Loans: ${loans.length}  |  Total Finance: \u20B9${totalFinanceAmount.toLocaleString('en-IN')}  |  Remaining: \u20B9${remainingFinanceAmount.toLocaleString('en-IN')}`, pageWidth / 2, 28, { align: 'center' });
+    doc.text(`Generated on: ${format(new Date(), 'dd/MMM/yyyy HH:mm')}`, pageWidth / 2, 22, { align: 'center' });
+    doc.text(`Total Loans: ${loans.length}  |  Finance Inflow: \u20B9${Math.round(totalFinanceAmount).toLocaleString('en-IN')}  |  Cash in hand: \u20B9${Math.round(remainingFinanceAmount).toLocaleString('en-IN')}`, pageWidth / 2, 28, { align: 'center' });
     doc.setFontSize(8);
     doc.text('All amounts are in INR', pageWidth / 2, 33, { align: 'center' });
 
@@ -181,16 +267,17 @@ export default function Dashboard() {
       loan.loan_number || '-',
       loan.customers?.name || '-',
       loan.customers?.mobile_number || '-',
-      `${Math.round(Number(loan.total_loan_amount)).toLocaleString('en-IN')}`,
-      `${Math.round(Number(loan.bond_fee || 0)).toLocaleString('en-IN')}`,
-      `${Math.round(Number(loan.interest_amount || 0)).toLocaleString('en-IN')}`,
-      `${Math.round(Number(loan.net_disbursed_amount || 0)).toLocaleString('en-IN')}`,
-      `${Math.round(Number(loan.outstanding_amount || 0)).toLocaleString('en-IN')}`,
-      `${Math.round(Number(loan.total_paid || 0)).toLocaleString('en-IN')}`,
+      `${Math.round(toSafeNumber(loan.total_loan_amount)).toLocaleString('en-IN')}`,
+      `${Math.round(toSafeNumber(loan.bond_fee)).toLocaleString('en-IN')}`,
+      `${Math.round(toSafeNumber(loan.interest_amount)).toLocaleString('en-IN')}`,
+      `${Math.round(toSafeNumber(loan.net_disbursed_amount)).toLocaleString('en-IN')}`,
+      `${Math.round(Number(getLivePenaltyAmount(loan) || 0)).toLocaleString('en-IN')}`,
+      `${Math.round(toSafeNumber(loan.outstanding_amount)).toLocaleString('en-IN')}`,
+      `${Math.round(toSafeNumber(loan.total_paid)).toLocaleString('en-IN')}`,
       loan.status?.toUpperCase() || '-',
-      loan.start_date ? format(new Date(loan.start_date), 'dd/MM/yyyy') : '-',
-      loan.current_due_date ? format(new Date(loan.current_due_date), 'dd/MM/yyyy') : '-',
-      loan.closure_date ? format(new Date(loan.closure_date), 'dd/MM/yyyy') : '-',
+      loan.start_date ? format(new Date(loan.start_date), 'dd/MMM/yyyy') : '-',
+      loan.current_due_date ? format(new Date(loan.current_due_date), 'dd/MMM/yyyy') : '-',
+      loan.closure_date ? format(new Date(loan.closure_date), 'dd/MMM/yyyy') : '-',
     ]);
 
 
@@ -204,6 +291,7 @@ export default function Dashboard() {
         'Bond Fee',
         'Interest',
         'Disbursed',
+        'Penalty',
         'Outstanding',
         'Paid',
         'Status',
@@ -213,11 +301,12 @@ export default function Dashboard() {
       ]],
       body: tableData,
       margin: { top: 38, right: 8, bottom: 8, left: 8 },
-      tableWidth: 'auto',
+      tableWidth: pageWidth - 16,
+      theme: 'grid',
       styles: {
-        fontSize: 7,
-        cellPadding: 1.8,
-        overflow: 'linebreak',
+        fontSize: 6.5,
+        cellPadding: 1.4,
+        overflow: 'ellipsize',
         halign: 'center',
         valign: 'middle',
       },
@@ -225,31 +314,32 @@ export default function Dashboard() {
         fillColor: [25, 118, 210],
         textColor: 255,
         fontStyle: 'bold',
-        fontSize: 7,
-        cellPadding: 2,
+        fontSize: 6.5,
+        cellPadding: 1.6,
         halign: 'center',
         valign: 'middle',
       },
       alternateRowStyles: { fillColor: [245, 245, 245] },
       columnStyles: {
-        0: { cellWidth: 24, halign: 'left' },
-        1: { cellWidth: 28, halign: 'left' },
+        0: { cellWidth: 18, halign: 'left' },
+        1: { cellWidth: 30, halign: 'left' },
         2: { cellWidth: 22 },
-        3: { cellWidth: 18 },
-        4: { cellWidth: 18 },
-        5: { cellWidth: 18 },
-        6: { cellWidth: 18 },
-        7: { cellWidth: 20 },
-        8: { cellWidth: 18 },
-        9: { cellWidth: 18 },
-        10: { cellWidth: 20 },
-        11: { cellWidth: 20 },
-        12: { cellWidth: 17 },
+        3: { cellWidth: 16, halign: 'right' },
+        4: { cellWidth: 14, halign: 'right' },
+        5: { cellWidth: 14, halign: 'right' },
+        6: { cellWidth: 16, halign: 'right' },
+        7: { cellWidth: 16, halign: 'right' },
+        8: { cellWidth: 18, halign: 'right' },
+        9: { cellWidth: 16, halign: 'right' },
+        10: { cellWidth: 15 },
+        11: { cellWidth: 18 },
+        12: { cellWidth: 18 },
+        13: { cellWidth: 16 },
       },
     });
 
 
-    doc.save(`loans-report-${format(new Date(), 'dd-MM-yyyy')}.pdf`);
+    doc.save(`loans-report-${format(new Date(), 'dd-MMM-yyyy')}.pdf`);
   };
 
 
@@ -264,7 +354,7 @@ export default function Dashboard() {
                 Dashboard
               </Typography>
               <Typography color="text.secondary">
-                {format(new Date(), 'EEEE, MMMM d, yyyy')}
+                {format(new Date(), 'dd/MMM/yyyy')}
               </Typography>
             </Box>
             <Button
@@ -396,13 +486,13 @@ export default function Dashboard() {
 
         {/* Money Summary */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 calc(33.33% - 8px)', minWidth: '200px' }}>
+          {/* <div style={{ flex: '1 1 calc(33.33% - 8px)', minWidth: '200px' }}>
             <Paper sx={{ p: 2.5, bgcolor: 'background.paper', height: '100%' }}>
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.875rem', display: 'block', mb: 0.5 }}>
                 Total Outstanding
               </Typography>
               <Typography variant="h5" color="error.main" fontWeight={700}>
-                ₹{totalOutstanding.toLocaleString('en-IN')}
+                ₹{Math.round(totalOutstanding).toLocaleString('en-IN')}
               </Typography>
             </Paper>
           </div>
@@ -412,27 +502,39 @@ export default function Dashboard() {
                 Total Disbursed
               </Typography>
               <Typography variant="h5" color="success.main" fontWeight={700}>
-                ₹{totalDisbursed.toLocaleString('en-IN')}
+                ₹{Math.round(totalDisbursed).toLocaleString('en-IN')}
               </Typography>
             </Paper>
-          </div>
+          </div> */}
           <div style={{ flex: '1 1 calc(33.33% - 8px)', minWidth: '200px' }}>
             <Paper sx={{ p: 2.5, bgcolor: 'background.paper', height: '100%' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.875rem', display: 'block', mb: 0.5 }}>
+              {/* <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.875rem', display: 'block', mb: 0.5 }}>
                 Total Finance Amount
               </Typography>
               <Typography variant="h5" color="primary.main" fontWeight={700}>
-                ₹{totalFinanceAmount.toLocaleString('en-IN')}
-              </Typography>
+                ₹{Math.round(totalFinanceAmount).toLocaleString('en-IN')}
+              </Typography> */}
               <Divider sx={{ my: 1.5 }} />
               <Typography variant="body2" color="text.secondary">
-                Disbursed: ₹{Math.round(totalAllDisbursed).toLocaleString('en-IN')}
+                Deposit Receipt: ₹{Math.round(totalDepositReceipts).toLocaleString('en-IN')}
+              </Typography>
+              {/* <Typography variant="body2" color="text.secondary">
+                Bank Amount Receipt: ₹{Math.round(totalBankAmountReceipts).toLocaleString('en-IN')}
+              </Typography> */}
+              {/* <Typography variant="body2" color="text.secondary">
+                Daily Payments (-): ₹{Math.round(totalDailyPaymentOutflow).toLocaleString('en-IN')}
+              </Typography> */}
+              <Typography variant="body2" color="text.secondary">
+                Loan Amount (-): ₹{Math.round(totalLoanOutflow).toLocaleString('en-IN')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Collected Back: ₹{Math.round(totalAllPaid).toLocaleString('en-IN')}
+                Loan Extra Collection (+): ₹{Math.round(totalLoanExtraCollection).toLocaleString('en-IN')}
+              </Typography>
+              <Typography variant="body1" color="primary.main" fontWeight={700}>
+                Cash in Bank: ₹{Math.round(remainingCashInBank).toLocaleString('en-IN')}
               </Typography>
               <Typography variant="body1" color="success.main" fontWeight={700}>
-                Left in Finance: ₹{Math.round(remainingFinanceAmount).toLocaleString('en-IN')}
+                Cash in hand: ₹{Math.round(remainingFinanceAmount).toLocaleString('en-IN')}
               </Typography>
             </Paper>
           </div>
@@ -529,10 +631,8 @@ export default function Dashboard() {
             >
               <Stack spacing={2.5}>
                 {filteredLoans.map((loan) => {
-                  const isOverdue = loan.status === 'overdue';
-                  const penaltyAmount = isOverdue
-                    ? calculatePenalty(loan.total_loan_amount, loan.current_due_date, new Date(), penaltyRate)
-                    : 0;
+                  const isOverdue = loan.status !== 'closed' && new Date(loan.current_due_date) < new Date();
+                  const penaltyAmount = getLivePenaltyAmount(loan);
 
 
                   const getStatusColor = (status) => {
@@ -689,7 +789,7 @@ export default function Dashboard() {
                               Start Date
                             </Typography>
                             <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                              {format(new Date(loan.start_date), 'dd/MM/yyyy')}
+                              {format(new Date(loan.start_date), 'dd/MMM/yyyy')}
                             </Typography>
                           </Stack>
 
@@ -706,7 +806,7 @@ export default function Dashboard() {
                                 color={isOverdue ? 'error' : 'inherit'}
                                 sx={{ fontSize: '0.875rem' }}
                               >
-                                {format(new Date(loan.current_due_date), 'dd/MM/yyyy')}
+                                {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                               </Typography>
                             </Stack>
                           </Stack>
@@ -723,7 +823,7 @@ export default function Dashboard() {
                                 color="success.main"
                                 sx={{ fontSize: '0.875rem' }}
                               >
-                                {format(new Date(loan.closure_date), 'dd/MM/yyyy')}
+                                {format(new Date(loan.closure_date), 'dd/MMM/yyyy')}
                               </Typography>
                             </Stack>
                           )}
@@ -770,11 +870,8 @@ export default function Dashboard() {
           )}
         </Box>
       </Stack>
+
+
     </Box>
   );
 }
-
-
-
-
-
