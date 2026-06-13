@@ -26,11 +26,12 @@ import {
 import {
   Payment as PaymentIcon,
   Extension as ExtensionIcon,
+  Delete as DeleteIcon,
   ArrowBack as BackIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import { getLoan, extendLoan } from '../../services/loanService';
+import { getLoan, extendLoan, deleteLoan } from '../../services/loanService';
 import { getPaymentsByLoan } from '../../services/paymentService';
 import { getSettings } from '../../services/settingsService';
 import { calculatePenalty, calculateMissedCycles } from '../../utils/calculations';
@@ -42,7 +43,7 @@ const LoanDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { canCreate, canEdit } = usePermissions();
+  const { canCreate, canEdit, canDelete } = usePermissions();
   const basePath = user?.role === 'super_admin' ? '/admin' : '/finance';
   const [loan, setLoan] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -50,6 +51,8 @@ const LoanDetail = () => {
   const [error, setError] = useState(null);
   const [extensionDialog, setExtensionDialog] = useState(false);
   const [extendingLoan, setExtendingLoan] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [deletingLoan, setDeletingLoan] = useState(false);
   const [extensionNotes, setExtensionNotes] = useState('');
   const [penaltyRate, setPenaltyRate] = useState(80); // Default annual penalty rate
 
@@ -106,6 +109,21 @@ const LoanDetail = () => {
   };
 
 
+  const handleDeleteLoan = async () => {
+    try {
+      setDeletingLoan(true);
+      setError(null);
+      await deleteLoan(id);
+      setDeleteDialog(false);
+      navigate(`${basePath}/loans`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingLoan(false);
+    }
+  };
+
+
   const getStatusColor = (status) => {
     const colors = {
       active: 'success',
@@ -135,6 +153,7 @@ const LoanDetail = () => {
   const isOverdue = new Date(loan.current_due_date) < new Date() && loan.status !== 'closed';
   const canExtend = canEdit && loan.status === 'active' && !isOverdue;
   const canPayment = canCreate && loan.status !== 'closed' && loan.status !== 'defaulted';
+  const canRemoveLoan = canDelete;
 
 
   // Calculate real-time penalty for overdue loans
@@ -189,6 +208,18 @@ const LoanDetail = () => {
               sx={{ display: { xs: 'flex', sm: 'inline-flex' }, py: { xs: 1.5, sm: 1 } }}
             >
               Make Payment
+            </Button>
+          )}
+          {canRemoveLoan && (
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => setDeleteDialog(true)}
+              fullWidth={true}
+              sx={{ display: { xs: 'flex', sm: 'inline-flex' }, py: { xs: 1.5, sm: 1 } }}
+            >
+              Delete Loan
             </Button>
           )}
         </Box>
@@ -520,6 +551,38 @@ const LoanDetail = () => {
             disabled={extendingLoan}
           >
             {extendingLoan ? 'Extending...' : 'Confirm Extension'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialog}
+        onClose={() => !deletingLoan && setDeleteDialog(false)}
+      >
+        <DialogTitle>Delete Loan Confirmation</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Are you sure you want to delete loan <strong>{loan.loan_number}</strong>?
+            This action cannot be undone.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Related records like payments and loan extensions for this loan will also be removed.
+          </Typography>
+          <Alert severity="warning">
+            The deleted loan's outstanding amount will automatically stop counting in cash in hand calculations.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog(false)} disabled={deletingLoan}>Cancel</Button>
+          <Button
+            onClick={handleDeleteLoan}
+            variant="contained"
+            color="error"
+            disabled={deletingLoan}
+          >
+            {deletingLoan ? 'Deleting...' : 'Yes, Delete Loan'}
           </Button>
         </DialogActions>
       </Dialog>

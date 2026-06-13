@@ -99,6 +99,30 @@ Finance Management/
 4. Note your project URL and anon key from Project Settings > API
 
 
+### Reset Data But Keep Login Credentials
+
+
+If you want to clear all business/transactional data while keeping login credentials, run:
+
+
+`supabase/clear_data_keep_logins.sql`
+
+
+This script keeps rows in `users` (email/password hash), clears customers/loans/payments/daily transactions, recreates baseline settings, and removes only unreferenced `finance_companies` rows.
+
+
+### Clear Only App-Entered Data (Keep Login, Companies, Settings)
+
+
+If you only want to clear data entered through the app (loans, customers, payments, daily amount entries), run:
+
+
+`supabase/clear_app_data_only.sql`
+
+
+This keeps `users` and `finance_companies`, and resets app-managed settings values (including `cash_in_bank`) to defaults.
+
+
 ### 2. Environment Configuration
 
 

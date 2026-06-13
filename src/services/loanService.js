@@ -309,6 +309,54 @@ export const updateLoan = async (id, updates) => {
 
 
 /**
+ * Delete loan by ID
+ * Deleting a loan automatically removes related payments/extensions via DB cascade.
+ */
+export const deleteLoan = async (id) => {
+  const currentUser = getCurrentUser();
+
+
+  if (!currentUser) {
+    throw new Error('Access denied: Please login first');
+  }
+
+
+  if (!(currentUser.role === 'super_admin' || currentUser.role === 'finance_manager' || currentUser.role === 'finance')) {
+    throw new Error('Access denied: You do not have permission to delete loans');
+  }
+
+
+  const { data: loan, error: loanError } = await supabase
+    .from('loans')
+    .select('id, finance_company_id')
+    .eq('id', id)
+    .single();
+
+
+  if (loanError) {
+    throw loanError;
+  }
+
+
+  if (isFinanceRole(currentUser.role) && currentUser.finance_company_id) {
+    if (loan.finance_company_id !== currentUser.finance_company_id) {
+      throw new Error('Access denied: You can only delete loans from your own finance company');
+    }
+  }
+
+
+  const { error } = await supabase
+    .from('loans')
+    .delete()
+    .eq('id', id);
+
+
+  if (error) throw error;
+  return true;
+};
+
+
+/**
  * Get overdue loans
  */
 export const getOverdueLoans = async () => {
