@@ -137,9 +137,15 @@ const LoanForm = () => {
       }, 0);
 
 
-      setAvailableFinanceAmount(
-        totalDepositReceipts + totalBankAmountReceipts - totalDailyPaymentOutflow - totalLoanOutflow + totalLoanExtraCollection
-      );
+      const calculatedAvailableAmount =
+        totalDepositReceipts +
+        totalBankAmountReceipts -
+        totalDailyPaymentOutflow -
+        totalLoanOutflow +
+        totalLoanExtraCollection;
+
+
+      setAvailableFinanceAmount(Math.max(0, calculatedAvailableAmount));
     } catch (err) {
       setError(err.message);
     }

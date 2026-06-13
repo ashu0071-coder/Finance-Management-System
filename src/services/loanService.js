@@ -84,7 +84,15 @@ const getAvailableCashInHand = async (financeCompanyId) => {
   }, 0);
 
 
-  return totalDepositReceipts + totalBankAmountReceipts - totalDailyPaymentOutflow - totalLoanOutflow + totalLoanExtraCollection;
+  const availableCashInHand =
+    totalDepositReceipts +
+    totalBankAmountReceipts -
+    totalDailyPaymentOutflow -
+    totalLoanOutflow +
+    totalLoanExtraCollection;
+
+
+  return Math.max(0, availableCashInHand);
 };
 
 

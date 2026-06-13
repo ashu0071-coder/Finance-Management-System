@@ -35,6 +35,8 @@ import {
   updateDailyPayment,
   updateDailyReceipt,
 } from '../../services/dailyTransService';
+import { getLoans } from '../../services/loanService';
+import { getSettings } from '../../services/settingsService';
 
 
 const todayISO = () => new Date().toISOString().split('T')[0];
@@ -165,6 +167,8 @@ export default function DailyTrans() {
 
   const [receipts, setReceipts] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [loans, setLoans] = useState([]);
+  const [cashInBankBase, setCashInBankBase] = useState(0);
   const [editingReceiptId, setEditingReceiptId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [receiptFilters, setReceiptFilters] = useState({
@@ -199,15 +203,86 @@ export default function DailyTrans() {
     try {
       setLoading(true);
       setError(null);
-      const [receiptData, paymentData] = await Promise.all([getDailyReceipts(), getDailyPayments()]);
+      const [receiptData, paymentData, loansData, settingsData] = await Promise.all([
+        getDailyReceipts(),
+        getDailyPayments(),
+        getLoans(),
+        getSettings(),
+      ]);
       setReceipts(receiptData);
       setPayments(paymentData);
+      setLoans(loansData);
+
+
+      const cashInBankSetting = (settingsData || []).find((setting) => setting.key === 'cash_in_bank');
+      const parsedCashInBank = Number.parseFloat(cashInBankSetting?.value);
+      setCashInBankBase(Number.isFinite(parsedCashInBank) ? parsedCashInBank : 0);
     } catch (err) {
       setError(err.message || 'Failed to load daily transactions');
     } finally {
       setLoading(false);
     }
   };
+
+
+  const totalDepositReceipts = useMemo(() => {
+    return receipts
+      .filter((record) => !isBankAmountReceipt(record))
+      .reduce((sum, record) => sum + toNumber(record.deposit_amount), 0);
+  }, [receipts]);
+
+
+  const totalBankAmountReceipts = useMemo(() => {
+    return receipts
+      .filter((record) => isBankAmountReceipt(record))
+      .reduce((sum, record) => sum + toNumber(record.deposit_amount), 0);
+  }, [receipts]);
+
+
+  const totalDailyPaymentOutflow = useMemo(() => {
+    return payments.reduce((sum, record) => sum + toNumber(record.amount), 0);
+  }, [payments]);
+
+
+  const totalBankAccountPaymentInflow = useMemo(() => {
+    return payments.reduce((sum, record) => {
+      const paymentType = String(record.payment_type || '').trim().toLowerCase();
+      return paymentType === 'bank account' ? sum + toNumber(record.amount) : sum;
+    }, 0);
+  }, [payments]);
+
+
+  const totalLoanOutflow = useMemo(() => {
+    return loans.reduce((sum, loan) => sum + toNumber(loan.outstanding_amount), 0);
+  }, [loans]);
+
+
+  const totalLoanExtraCollection = useMemo(() => {
+    return loans.reduce((sum, loan) => {
+      const loanAmount = toNumber(loan.total_loan_amount);
+      const netDisbursed = toNumber(loan.net_disbursed_amount);
+      const paid = toNumber(loan.total_paid);
+      const upfrontDeduction = Math.max(0, loanAmount - netDisbursed);
+      const overCollection = Math.max(0, paid - loanAmount);
+      return sum + upfrontDeduction + overCollection;
+    }, 0);
+  }, [loans]);
+
+
+  const rawCashInHand =
+    totalDepositReceipts +
+    totalBankAmountReceipts -
+    totalDailyPaymentOutflow -
+    totalLoanOutflow +
+    totalLoanExtraCollection;
+
+
+  const rawCashInBank =
+    cashInBankBase - totalBankAmountReceipts + totalBankAccountPaymentInflow;
+
+
+  const safeCashInHand = Math.max(0, Math.round(rawCashInHand));
+  const safeCashInBank = Math.max(0, Math.round(rawCashInBank));
 
 
   const handleReceiptChange = (field, value) => {
@@ -242,6 +317,11 @@ export default function DailyTrans() {
         period_days: Math.max(1, Math.round(toNumber(receiptForm.period_days))),
         percentage: Math.round(toNumber(receiptForm.percentage)),
       };
+
+
+      if (payload.deposit_amount <= 0) {
+        throw new Error('Deposit amount must be greater than 0.');
+      }
 
 
       if (editingReceiptId) {
@@ -288,6 +368,24 @@ export default function DailyTrans() {
       };
 
 
+      if (payload.amount <= 0) {
+        throw new Error('Payment amount must be greater than 0.');
+      }
+
+
+      const previousAmount = editingPaymentId
+        ? toNumber(payments.find((record) => record.id === editingPaymentId)?.amount)
+        : 0;
+
+
+      const availableForPayment = Math.max(0, Math.round(rawCashInHand + previousAmount));
+      if (payload.amount > availableForPayment) {
+        throw new Error(
+          `Insufficient cash in hand. Available ₹${availableForPayment.toLocaleString('en-IN')}, requested ₹${payload.amount.toLocaleString('en-IN')}. Please enter a lower amount.`
+        );
+      }
+
+
       if (editingPaymentId) {
         await updateDailyPayment(editingPaymentId, payload);
       } else {
@@ -330,6 +428,19 @@ export default function DailyTrans() {
         period_days: 1,
         percentage: 0,
       };
+
+
+      if (payload.deposit_amount <= 0) {
+        throw new Error('Bank amount must be greater than 0.');
+      }
+
+
+      const availableBankAmount = Math.max(0, Math.round(rawCashInBank));
+      if (payload.deposit_amount > availableBankAmount) {
+        throw new Error(
+          `Insufficient cash in bank. Available ₹${availableBankAmount.toLocaleString('en-IN')}, requested ₹${payload.deposit_amount.toLocaleString('en-IN')}. Please enter a lower amount.`
+        );
+      }
 
 
       await createDailyReceipt(payload);
@@ -735,6 +846,16 @@ export default function DailyTrans() {
           {successMessage}
         </Alert>
       )}
+
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6}>
+          <Alert severity="info">Available Cash in Hand: ₹{safeCashInHand.toLocaleString('en-IN')}</Alert>
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <Alert severity="info">Available Cash in Bank: ₹{safeCashInBank.toLocaleString('en-IN')}</Alert>
+        </Grid>
+      </Grid>
 
 
       <Paper sx={{ mb: 3 }}>

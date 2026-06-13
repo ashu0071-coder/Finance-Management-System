@@ -177,9 +177,15 @@ export default function Dashboard() {
 
 
   const totalFinanceAmount = totalReceiptInflow;
-  const remainingFinanceAmount =
+  const remainingFinanceAmountRaw =
     totalReceiptInflow - totalDailyPaymentOutflow - totalLoanOutflow + totalLoanExtraCollection;
-  const remainingCashInBank = cashInBankBase - totalBankAmountReceipts + totalBankAccountPaymentInflow;
+  const remainingCashInBankRaw =
+    cashInBankBase - totalBankAmountReceipts + totalBankAccountPaymentInflow;
+
+
+  // Never show negative balances in the UI.
+  const remainingFinanceAmount = Math.max(0, remainingFinanceAmountRaw);
+  const remainingCashInBank = Math.max(0, remainingCashInBankRaw);
 
 
   // Filter loans based on active tab
