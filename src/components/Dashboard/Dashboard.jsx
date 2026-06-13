@@ -17,10 +17,6 @@ import {
   Button,
 } from '@mui/material';
 import {
-  TrendingUp,
-  Warning,
-  CheckCircle,
-  Schedule,
   Phone as PhoneIcon,
   Warning as WarningIcon,
   Search as SearchIcon,
@@ -28,7 +24,6 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { getLoans } from '../../services/loanService';
-import { getCustomers } from '../../services/customerService';
 import { getSettings } from '../../services/settingsService';
 import { getDailyPayments, getDailyReceipts } from '../../services/dailyTransService';
 import { calculatePenalty } from '../../utils/calculations';
@@ -68,7 +63,6 @@ export default function Dashboard() {
   const { user } = useAuth();
   const basePath = user?.role === 'super_admin' ? '/admin' : '/finance';
   const [loans, setLoans] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [penaltyRate, setPenaltyRate] = useState(80);
@@ -87,15 +81,13 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [loansData, customersData, settingsData, receiptData, paymentData] = await Promise.all([
+      const [loansData, settingsData, receiptData, paymentData] = await Promise.all([
         getLoans(),
-        getCustomers(),
         getSettings(),
         getDailyReceipts(),
         getDailyPayments(),
       ]);
       setLoans(loansData);
-      setCustomers(customersData);
       setDailyReceipts(receiptData);
       setDailyPayments(paymentData);
      
@@ -383,210 +375,267 @@ export default function Dashboard() {
         )}
 
 
-        {/* Statistics Cards - Clickable */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 calc(25% - 8px)', minWidth: '150px' }}>
-            <Card
+        {/* Financial Metrics - Professional Clean Design */}
+        <Box>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{ mb: 3, color: '#1a1a1a', letterSpacing: 0.5 }}
+          >
+            Financial Summary
+          </Typography>
+         
+          <Stack spacing={3}>
+            {/* Row 1: Deposit Receipt & Loan Amount */}
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              {/* Deposit Receipt */}
+              <div style={{ flex: '1 1 calc(50% - 16px)', minWidth: '220px' }}>
+                <Paper
+                  sx={{
+                    p: 2.8,
+                    bgcolor: '#ffffff',
+                    border: '1px solid #e0e0e0',
+                    height: '100%',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+                    }
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 600, color: '#666666', mb: 1.2, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: 0.5 }}
+                  >
+                    Deposit Receipt
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    sx={{ color: '#000000', fontWeight: 700, fontSize: '1.9rem', letterSpacing: -0.5 }}
+                  >
+                    ₹{Math.round(totalDepositReceipts).toLocaleString('en-IN')}
+                  </Typography>
+                </Paper>
+              </div>
+
+
+              {/* Loan Amount */}
+              <div style={{ flex: '1 1 calc(50% - 16px)', minWidth: '220px' }}>
+                <Paper
+                  sx={{
+                    p: 2.8,
+                    bgcolor: '#ffffff',
+                    border: '1px solid #e0e0e0',
+                    height: '100%',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+                    }
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 600, color: '#666666', mb: 1.2, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: 0.5 }}
+                  >
+                    Loan Amount Issued (-)
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    sx={{ color: '#000000', fontWeight: 700, fontSize: '1.9rem', letterSpacing: -0.5 }}
+                  >
+                    ₹{Math.round(totalLoanOutflow).toLocaleString('en-IN')}
+                  </Typography>
+                </Paper>
+              </div>
+            </div>
+
+
+            {/* Row 2: Loan Extra Collection & Cash in Bank */}
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              {/* Loan Extra Collection */}
+              <div style={{ flex: '1 1 calc(50% - 16px)', minWidth: '220px' }}>
+                <Paper
+                  sx={{
+                    p: 2.8,
+                    bgcolor: '#ffffff',
+                    border: '1px solid #e0e0e0',
+                    height: '100%',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+                    }
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 600, color: '#666666', mb: 1.2, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: 0.5 }}
+                  >
+                    Collection & Interest (+)
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    sx={{ color: '#000000', fontWeight: 700, fontSize: '1.9rem', letterSpacing: -0.5 }}
+                  >
+                    ₹{Math.round(totalLoanExtraCollection).toLocaleString('en-IN')}
+                  </Typography>
+                </Paper>
+              </div>
+
+
+              {/* Cash in Bank */}
+              <div style={{ flex: '1 1 calc(50% - 16px)', minWidth: '220px' }}>
+                <Paper
+                  sx={{
+                    p: 2.8,
+                    bgcolor: '#ffffff',
+                    border: '1px solid #e0e0e0',
+                    height: '100%',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+                    }
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 600, color: '#666666', mb: 1.2, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: 0.5 }}
+                  >
+                    Cash in Bank
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    sx={{ color: '#000000', fontWeight: 700, fontSize: '1.9rem', letterSpacing: -0.5 }}
+                  >
+                    ₹{Math.round(remainingCashInBank).toLocaleString('en-IN')}
+                  </Typography>
+                </Paper>
+              </div>
+            </div>
+
+
+            {/* Row 3: Cash in Hand - Primary Focus */}
+            <Paper
               sx={{
-                bgcolor: 'success.main',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                height: '100%',
+                p: 3.5,
+                bgcolor: '#fafafa',
+                border: '2px solid #333333',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+                transition: 'all 0.2s ease',
                 '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 4,
+                  boxShadow: '0 6px 20px rgba(0, 0, 0, 0.15)',
                 },
               }}
-              onClick={() => setActiveTab('active')}
             >
-              <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                <CheckCircle sx={{ fontSize: 32, mb: 1 }} />
-                <Typography variant="h4" fontWeight={700}>
-                  {activeLoans.length}
-                </Typography>
-                <Typography variant="caption" sx={{ fontSize: '0.875rem' }}>Active Loans</Typography>
-              </CardContent>
-            </Card>
-          </div>
-
-
-          <div style={{ flex: '1 1 calc(25% - 8px)', minWidth: '150px' }}>
-            <Card
-              sx={{
-                bgcolor: 'error.main',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                height: '100%',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 4,
-                },
-              }}
-              onClick={() => setActiveTab('overdue')}
-            >
-              <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                <Warning sx={{ fontSize: 32, mb: 1 }} />
-                <Typography variant="h4" fontWeight={700}>
-                  {overdueLoans.length}
-                </Typography>
-                <Typography variant="caption" sx={{ fontSize: '0.875rem' }}>Overdue</Typography>
-              </CardContent>
-            </Card>
-          </div>
-
-
-          <div style={{ flex: '1 1 calc(25% - 8px)', minWidth: '150px' }}>
-            <Card
-              sx={{
-                bgcolor: 'info.main',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                height: '100%',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 4,
-                },
-              }}
-              onClick={() => setActiveTab('closed')}
-            >
-              <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                <Schedule sx={{ fontSize: 32, mb: 1 }} />
-                <Typography variant="h4" fontWeight={700}>
-                  {closedLoans.length}
-                </Typography>
-                <Typography variant="caption" sx={{ fontSize: '0.875rem' }}>Closed</Typography>
-              </CardContent>
-            </Card>
-          </div>
-
-
-          <div style={{ flex: '1 1 calc(25% - 8px)', minWidth: '150px' }}>
-            <Card
-              sx={{
-                bgcolor: 'primary.main',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.3s',
-                height: '100%',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 4,
-                },
-              }}
-              onClick={() => navigate(`${basePath}/customers`)}
-            >
-              <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                <TrendingUp sx={{ fontSize: 32, mb: 1 }} />
-                <Typography variant="h4" fontWeight={700}>
-                  {customers.length}
-                </Typography>
-                <Typography variant="caption" sx={{ fontSize: '0.875rem' }}>Customers</Typography>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-
-        {/* Money Summary */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {/* <div style={{ flex: '1 1 calc(33.33% - 8px)', minWidth: '200px' }}>
-            <Paper sx={{ p: 2.5, bgcolor: 'background.paper', height: '100%' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.875rem', display: 'block', mb: 0.5 }}>
-                Total Outstanding
-              </Typography>
-              <Typography variant="h5" color="error.main" fontWeight={700}>
-                ₹{Math.round(totalOutstanding).toLocaleString('en-IN')}
-              </Typography>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 700, color: '#333333', mb: 1.2, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: 1 }}
+                  >
+                    Available Balance
+                  </Typography>
+                  <Typography
+                    variant="h3"
+                    sx={{ color: '#000000', fontWeight: 800, fontSize: '2.8rem', letterSpacing: -1 }}
+                  >
+                    ₹{Math.round(remainingFinanceAmount).toLocaleString('en-IN')}
+                  </Typography>
+                </Box>
+                <Box sx={{ textAlign: 'right', color: '#999999' }}>
+                  <Typography variant="caption" sx={{ fontSize: '0.8rem' }}>
+                    Cash in Hand
+                  </Typography>
+                </Box>
+              </Stack>
             </Paper>
-          </div>
-          <div style={{ flex: '1 1 calc(33.33% - 8px)', minWidth: '200px' }}>
-            <Paper sx={{ p: 2.5, bgcolor: 'background.paper', height: '100%' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.875rem', display: 'block', mb: 0.5 }}>
-                Total Disbursed
-              </Typography>
-              <Typography variant="h5" color="success.main" fontWeight={700}>
-                ₹{Math.round(totalDisbursed).toLocaleString('en-IN')}
-              </Typography>
-            </Paper>
-          </div> */}
-          <div style={{ flex: '1 1 calc(33.33% - 8px)', minWidth: '200px' }}>
-            <Paper sx={{ p: 2.5, bgcolor: 'background.paper', height: '100%' }}>
-              {/* <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.875rem', display: 'block', mb: 0.5 }}>
-                Total Finance Amount
-              </Typography>
-              <Typography variant="h5" color="primary.main" fontWeight={700}>
-                ₹{Math.round(totalFinanceAmount).toLocaleString('en-IN')}
-              </Typography> */}
-              <Divider sx={{ my: 1.5 }} />
-              <Typography variant="body2" color="text.secondary">
-                Deposit Receipt: ₹{Math.round(totalDepositReceipts).toLocaleString('en-IN')}
-              </Typography>
-              {/* <Typography variant="body2" color="text.secondary">
-                Bank Amount Receipt: ₹{Math.round(totalBankAmountReceipts).toLocaleString('en-IN')}
-              </Typography> */}
-              {/* <Typography variant="body2" color="text.secondary">
-                Daily Payments (-): ₹{Math.round(totalDailyPaymentOutflow).toLocaleString('en-IN')}
-              </Typography> */}
-              <Typography variant="body2" color="text.secondary">
-                Loan Amount (-): ₹{Math.round(totalLoanOutflow).toLocaleString('en-IN')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Loan Extra Collection (+): ₹{Math.round(totalLoanExtraCollection).toLocaleString('en-IN')}
-              </Typography>
-              <Typography variant="body1" color="primary.main" fontWeight={700}>
-                Cash in Bank: ₹{Math.round(remainingCashInBank).toLocaleString('en-IN')}
-              </Typography>
-              <Typography variant="body1" color="success.main" fontWeight={700}>
-                Cash in hand: ₹{Math.round(remainingFinanceAmount).toLocaleString('en-IN')}
-              </Typography>
-            </Paper>
-          </div>
-        </div>
+          </Stack>
+        </Box>
 
 
         {/* Search Bar */}
-        <TextField
-          fullWidth
-          placeholder="Search by loan number, customer name, mobile, or referrer..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
+        <Box sx={{ mt: 4, mb: 2 }}>
+          <TextField
+            fullWidth
+            placeholder="Search by loan number, customer name, mobile, or referrer..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: '#999999' }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                bgcolor: '#ffffff',
+                border: '1px solid #e0e0e0',
+                borderRadius: '8px',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  borderColor: '#999999',
+                },
+                '&.Mui-focused': {
+                  borderColor: '#333333',
+                  boxShadow: '0 0 0 2px rgba(51, 51, 51, 0.08)',
+                }
+              },
+              '& .MuiOutlinedInput-input': {
+                fontSize: '0.95rem',
+                padding: '12px 14px',
+              }
+            }}
+          />
+        </Box>
+
+
+        {/* Tabs for filtering - Professional Styling */}
+        <Paper
           sx={{
-            '& .MuiOutlinedInput-root': {
-              bgcolor: 'background.paper',
-            }
+            mb: 3,
+            border: '1px solid #e0e0e0',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
           }}
-        />
-
-
-        {/* Tabs for filtering */}
-        <Paper>
+        >
           <Tabs
             value={activeTab}
             onChange={handleTabChange}
             variant="fullWidth"
             sx={{
+              bgcolor: '#ffffff',
               '& .MuiTab-root': {
-                py: 2,
+                py: 1,
+                px: 1.2,
                 fontWeight: 600,
+                fontSize: '0.8rem',
+                color: '#666666',
+                textTransform: 'capitalize',
+                transition: 'all 0.2s ease',
+                borderBottom: '2px solid transparent',
+                minWidth: 0,
+                flex: 1,
+                '&:hover': {
+                  color: '#333333',
+                  bgcolor: '#f9f9f9',
+                },
+                '&.Mui-selected': {
+                  color: '#000000',
+                  fontWeight: 700,
+                  borderBottom: '2px solid #000000',
+                },
               },
+              '& .MuiTabs-indicator': {
+                display: 'none',
+              }
             }}
           >
             <Tab label={`All (${loans.length})`} value="all" />
-            <Tab
-              label={`Overdue (${overdueLoans.length})`}
-              value="overdue"
-              sx={{ color: 'error.main' }}
-            />
+            <Tab label={`Overdue (${overdueLoans.length})`} value="overdue" />
             <Tab label={`Active (${activeLoans.length})`} value="active" />
             <Tab label={`Closed (${closedLoans.length})`} value="closed" />
           </Tabs>
@@ -595,23 +644,32 @@ export default function Dashboard() {
 
         {/* Loans Display */}
         <Box>
-          <Typography variant="body2" color="text.secondary" mb={2}>
+          <Typography
+            variant="body2"
+            sx={{ fontWeight: 600, color: '#666666', mb: 2.5, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: 0.5 }}
+          >
             {filteredLoans.length} loan{filteredLoans.length === 1 ? '' : 's'} found
           </Typography>
          
           {filteredLoans.length === 0 ? (
-            <Card>
-              <CardContent sx={{ textAlign: 'center', py: 6 }}>
-                <Typography variant="h6" color="text.secondary">
-                  No loans found
+            <Paper
+              sx={{
+                p: 5,
+                textAlign: 'center',
+                bgcolor: '#fafafa',
+                border: '1px solid #e0e0e0',
+                borderRadius: '8px',
+              }}
+            >
+              <Typography variant="h6" sx={{ color: '#999999', fontWeight: 600 }}>
+                No loans found
+              </Typography>
+              {searchTerm && (
+                <Typography variant="body2" sx={{ color: '#999999', mt: 1 }}>
+                  Try adjusting your search terms
                 </Typography>
-                {searchTerm && (
-                  <Typography variant="body2" color="text.secondary" mt={1}>
-                    Try adjusting your search terms
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
+              )}
+            </Paper>
           ) : (
             <Box
               sx={{
@@ -635,7 +693,7 @@ export default function Dashboard() {
                 },
               }}
             >
-              <Stack spacing={2.5}>
+              <Stack spacing={2}>
                 {filteredLoans.map((loan) => {
                   const isOverdue = loan.status !== 'closed' && new Date(loan.current_due_date) < new Date();
                   const penaltyAmount = getLivePenaltyAmount(loan);
@@ -643,22 +701,34 @@ export default function Dashboard() {
 
                   const getStatusColor = (status) => {
                     const colors = {
-                      active: 'success.main',
-                      closed: 'info.main',
-                      overdue: 'error.main',
-                      defaulted: 'error.dark',
-                      extended: 'warning.main',
+                      active: '#e8e8e8',
+                      closed: '#f5f5f5',
+                      overdue: '#fff0f0',
+                      defaulted: '#ffd5d5',
+                      extended: '#fffaed',
                     };
-                    return colors[status] || 'default';
+                    return colors[status] || '#fafafa';
+                  };
+
+
+                  const getStatusBorder = (status) => {
+                    const colors = {
+                      active: '#333333',
+                      closed: '#999999',
+                      overdue: '#cc0000',
+                      defaulted: '#990000',
+                      extended: '#ff9800',
+                    };
+                    return colors[status] || '#e0e0e0';
                   };
 
 
                   const chipStatusColors = {
-                    active: 'success',
-                    overdue: 'error',
+                    active: 'default',
+                    overdue: 'default',
                     closed: 'default',
-                    defaulted: 'error',
-                    extended: 'warning',
+                    defaulted: 'default',
+                    extended: 'default',
                   };
                   const chipColor = chipStatusColors[loan.status] || 'default';
                  
@@ -667,32 +737,35 @@ export default function Dashboard() {
                       key={loan.id}
                       sx={{
                         borderLeft: '4px solid',
-                        borderColor: getStatusColor(loan.status),
+                        borderColor: getStatusBorder(loan.status),
+                        bgcolor: getStatusColor(loan.status),
                         cursor: 'pointer',
-                        boxShadow: 2,
-                        transition: 'all 0.3s ease-in-out',
+                        border: '1px solid #e0e0e0',
+                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.06)',
+                        transition: 'all 0.25s ease-in-out',
                         '&:hover': {
-                          boxShadow: 6,
+                          boxShadow: '0 6px 16px rgba(0, 0, 0, 0.12)',
                           transform: 'translateY(-2px)',
+                          borderColor: '#999999',
                         },
                       }}
                       onClick={() => navigate(`${basePath}/loans/${loan.id}`)}
                     >
-                      <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
+                      <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
                         {/* Header */}
                         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
                           <Box flex={1}>
-                            <Typography variant="h6" fontWeight={600} sx={{ fontSize: { xs: '1.05rem', sm: '1.15rem' } }}>
+                            <Typography variant="h6" fontWeight={700} sx={{ fontSize: { xs: '1.05rem', sm: '1.1rem' }, color: '#000000' }}>
                               {loan.customers?.name || 'N/A'}
                             </Typography>
-                            <Stack direction="row" spacing={0.5} alignItems="center" mt={0.3}>
-                              <PhoneIcon sx={{ fontSize: 13, color: 'text.secondary' }} />
-                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.813rem' }}>
+                            <Stack direction="row" spacing={0.5} alignItems="center" mt={0.5}>
+                              <PhoneIcon sx={{ fontSize: 13, color: '#999999' }} />
+                              <Typography variant="caption" sx={{ fontSize: '0.8rem', color: '#666666' }}>
                                 {loan.customers?.mobile_number || 'N/A'}
                               </Typography>
                             </Stack>
                             {loan.customers?.reference_person_name && (
-                              <Typography variant="caption" color="primary.main" sx={{ fontSize: '0.75rem', fontWeight: 500, mt: 0.5, display: 'block' }}>
+                              <Typography variant="caption" sx={{ fontSize: '0.75rem', fontWeight: 600, mt: 0.5, display: 'block', color: '#555555' }}>
                                 Referrer: {loan.customers.reference_person_name}
                                 {loan.customers?.reference_person_mobile && ` • ${loan.customers.reference_person_mobile}`}
                               </Typography>
@@ -702,7 +775,13 @@ export default function Dashboard() {
                             label={loan.status.toUpperCase()}
                             color={chipColor}
                             size="small"
-                            sx={{ fontWeight: 600, fontSize: '0.7rem' }}
+                            sx={{
+                              fontWeight: 700,
+                              fontSize: '0.65rem',
+                              bgcolor: '#f0f0f0',
+                              color: '#333333',
+                              border: '1px solid #d0d0d0',
+                            }}
                           />
                         </Stack>
 
@@ -717,50 +796,57 @@ export default function Dashboard() {
                               mb: 1.5,
                               py: 0.8,
                               fontWeight: 600,
-                              backgroundColor: 'warning.light',
+                              backgroundColor: '#fff0f0',
+                              border: '1px solid #ffcccc',
+                              color: '#cc0000',
+                              '& .MuiAlert-icon': {
+                                color: '#cc0000',
+                              }
                             }}
                           >
-                            <Typography variant="body2" sx={{ fontSize: '0.875rem', fontWeight: 600 }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#cc0000' }}>
                               ⚠️ OVERDUE! Penalty: ₹{Number(penaltyAmount).toLocaleString('en-IN')}
                             </Typography>
                           </Alert>
                         )}
 
 
-                        <Divider sx={{ my: 1.5 }} />
+                        <Divider sx={{ my: 1.2, borderColor: '#e8e8e8' }} />
 
 
                         {/* Loan Details */}
-                        <Stack spacing={1}>
+                        <Stack spacing={0.8}>
                           <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#666666', fontWeight: 500 }}>
                               Loan Number
                             </Typography>
-                            <Typography variant="body2" fontWeight={500} sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.85rem', color: '#000000' }}>
                               {loan.loan_number}
                             </Typography>
                           </Stack>
 
 
                           <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#666666', fontWeight: 500 }}>
                               Total Loan
                             </Typography>
-                            <Typography variant="body2" fontWeight={500} sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.85rem', color: '#000000' }}>
                               ₹{Number(loan.total_loan_amount).toLocaleString('en-IN')}
                             </Typography>
                           </Stack>
 
 
                           <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#666666', fontWeight: 500 }}>
                               Outstanding
                             </Typography>
                             <Typography
                               variant="body2"
-                              fontWeight={600}
-                              color={loan.outstanding_amount > 0 ? 'error.main' : 'success.main'}
-                              sx={{ fontSize: '0.95rem' }}
+                              fontWeight={700}
+                              sx={{
+                                fontSize: '0.9rem',
+                                color: loan.outstanding_amount > 0 ? '#cc0000' : '#00aa00',
+                              }}
                             >
                               ₹{Number(loan.outstanding_amount).toLocaleString('en-IN')}
                             </Typography>
@@ -770,16 +856,15 @@ export default function Dashboard() {
                           {isOverdue && penaltyAmount > 0 && (
                             <Stack direction="row" justifyContent="space-between" alignItems="center">
                               <Stack direction="row" spacing={0.5} alignItems="center">
-                                <WarningIcon color="warning" sx={{ fontSize: 14 }} />
-                                <Typography variant="body2" color="warning.main" sx={{ fontSize: '0.875rem', fontWeight: 600 }}>
+                                <WarningIcon sx={{ fontSize: 14, color: '#ff9800' }} />
+                                <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#ff9800' }}>
                                   Penalty
                                 </Typography>
                               </Stack>
                               <Typography
                                 variant="body2"
-                                fontWeight={600}
-                                color="warning.main"
-                                sx={{ fontSize: '0.95rem' }}
+                                fontWeight={700}
+                                sx={{ fontSize: '0.9rem', color: '#ff9800' }}
                               >
                                 ₹{Number(penaltyAmount).toLocaleString('en-IN')}
                               </Typography>
@@ -787,30 +872,32 @@ export default function Dashboard() {
                           )}
 
 
-                          <Divider sx={{ my: 0.8 }} />
+                          <Divider sx={{ my: 0.6, borderColor: '#e8e8e8' }} />
 
 
                           <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#666666', fontWeight: 500 }}>
                               Start Date
                             </Typography>
-                            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#000000', fontWeight: 500 }}>
                               {format(new Date(loan.start_date), 'dd/MMM/yyyy')}
                             </Typography>
                           </Stack>
 
 
                           <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#666666', fontWeight: 500 }}>
                               Due Date
                             </Typography>
                             <Stack direction="row" spacing={0.5} alignItems="center">
-                              {isOverdue && <WarningIcon color="error" sx={{ fontSize: 14 }} />}
+                              {isOverdue && <WarningIcon sx={{ fontSize: 14, color: '#cc0000' }} />}
                               <Typography
                                 variant="body2"
-                                fontWeight={500}
-                                color={isOverdue ? 'error' : 'inherit'}
-                                sx={{ fontSize: '0.875rem' }}
+                                fontWeight={600}
+                                sx={{
+                                  fontSize: '0.85rem',
+                                  color: isOverdue ? '#cc0000' : '#000000',
+                                }}
                               >
                                 {format(new Date(loan.current_due_date), 'dd/MMM/yyyy')}
                               </Typography>
@@ -820,14 +907,13 @@ export default function Dashboard() {
 
                           {loan.status === 'closed' && loan.closure_date && (
                             <Stack direction="row" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                              <Typography variant="body2" sx={{ fontSize: '0.85rem', color: '#666666', fontWeight: 500 }}>
                                 Closed On
                               </Typography>
                               <Typography
                                 variant="body2"
-                                fontWeight={500}
-                                color="success.main"
-                                sx={{ fontSize: '0.875rem' }}
+                                fontWeight={600}
+                                sx={{ fontSize: '0.85rem', color: '#00aa00' }}
                               >
                                 {format(new Date(loan.closure_date), 'dd/MMM/yyyy')}
                               </Typography>
@@ -838,28 +924,26 @@ export default function Dashboard() {
                           {/* Total Amount Due */}
                           {isOverdue && penaltyAmount > 0 && (
                             <>
-                              <Divider sx={{ my: 0.8 }} />
+                              <Divider sx={{ my: 0.8, borderColor: '#e8e8e8' }} />
                               <Stack
                                 direction="row"
                                 justifyContent="space-between"
                                 alignItems="center"
                                 sx={{
-                                  backgroundColor: 'rgba(211, 47, 47, 0.08)',
+                                  backgroundColor: '#fff0f0',
                                   p: 1.5,
-                                  borderRadius: 1,
+                                  borderRadius: '6px',
                                   mt: 1,
-                                  border: '1px solid',
-                                  borderColor: 'error.light',
+                                  border: '1px solid #ffcccc',
                                 }}
                               >
-                                <Typography variant="body1" color="error.main" sx={{ fontSize: '1rem', fontWeight: 600 }}>
+                                <Typography variant="body1" sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#cc0000' }}>
                                   Total Amount Due
                                 </Typography>
                                 <Typography
                                   variant="h6"
-                                  fontWeight={700}
-                                  color="error.main"
-                                  sx={{ fontSize: '1.25rem' }}
+                                  fontWeight={800}
+                                  sx={{ fontSize: '1.1rem', color: '#cc0000' }}
                                 >
                                   ₹{(Number(loan.outstanding_amount) + Number(penaltyAmount)).toLocaleString('en-IN')}
                                 </Typography>

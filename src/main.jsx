@@ -33,37 +33,40 @@ const theme = createTheme({
   },
   typography: {
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    // Larger base font size for mobile readability
-    fontSize: 16,
+    // Reduce overall UI scale slightly for denser layout.
+    fontSize: 14,
     h4: {
-      fontSize: '1.75rem',
+      fontSize: '1.6rem',
       fontWeight: 600,
     },
     h5: {
-      fontSize: '1.5rem',
+      fontSize: '1.35rem',
       fontWeight: 600,
     },
     h6: {
-      fontSize: '1.25rem',
+      fontSize: '1.12rem',
       fontWeight: 600,
     },
     button: {
-      fontSize: '1rem',
+      fontSize: '0.92rem',
       fontWeight: 500,
       textTransform: 'none', // More friendly, less corporate
     },
   },
   components: {
     MuiButton: {
+      defaultProps: {
+        size: 'medium',
+      },
       styleOverrides: {
         root: {
           borderRadius: 8,
-          padding: '12px 24px', // Larger touch targets
-          fontSize: '1rem',
+          padding: '10px 20px',
+          fontSize: '0.92rem',
         },
         sizeLarge: {
-          padding: '16px 32px',
-          fontSize: '1.1rem',
+          padding: '12px 24px',
+          fontSize: '1rem',
         },
       },
     },
@@ -76,10 +79,13 @@ const theme = createTheme({
       },
     },
     MuiTextField: {
+      defaultProps: {
+        size: 'small',
+      },
       styleOverrides: {
         root: {
           '& .MuiInputBase-root': {
-            fontSize: '1rem',
+            fontSize: '0.92rem',
           },
         },
       },

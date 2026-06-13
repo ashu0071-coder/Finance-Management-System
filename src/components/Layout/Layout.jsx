@@ -96,10 +96,17 @@ export default function Layout({ children }) {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box>
         <Toolbar sx={{ bgcolor: 'primary.main', color: 'white' }}>
-          {console.log('User Role:', user)}
-          <Typography variant="h6" fontWeight={700} noWrap>
-            💰 {user?.finance_company_name || 'Loan Manager'}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+            <Box
+              component="img"
+              src="/logo.png"
+              alt="Finance Manager Logo"
+              sx={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }}
+            />
+            <Typography variant="h6" fontWeight={700} noWrap>
+              {user?.finance_company_name || 'Loan Manager'}
+            </Typography>
+          </Box>
         </Toolbar>
         <Box sx={{ p: 2 }}>
           <Typography variant="caption" color="text.secondary" display="block">
@@ -174,9 +181,17 @@ export default function Layout({ children }) {
             >
               <MenuIcon />
             </IconButton>
-            <Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
-              💰  {user?.finance_company_name || 'Loan Manager'}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexGrow: 1, minWidth: 0 }}>
+              <Box
+                component="img"
+                src="/logo.png"
+                alt="Finance Manager Logo"
+                sx={{ width: 26, height: 26, objectFit: 'contain', flexShrink: 0 }}
+              />
+              <Typography variant="h6" fontWeight={700} noWrap>
+                {user?.finance_company_name || 'Loan Manager'}
+              </Typography>
+            </Box>
             <IconButton color="inherit" onClick={handleLogout}>
               <LogoutIcon />
             </IconButton>
@@ -206,18 +221,74 @@ export default function Layout({ children }) {
 
         {/* Bottom Navigation - Dynamic based on menu items */}
         {menuItems.length > 0 && (
-          <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1100 }} elevation={8}>
+          <Paper
+            sx={{
+              position: 'fixed',
+              bottom: 8,
+              left: 8,
+              right: 8,
+              zIndex: 1100,
+              pt: 0.7,
+              pb: 0.7,
+              px: 0.6,
+              borderRadius: 4,
+              border: '1px solid rgba(255,255,255,0.4)',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.94), rgba(247,249,252,0.9))',
+              backdropFilter: 'blur(14px)',
+              boxShadow: '0 10px 28px rgba(2, 22, 56, 0.18)',
+              overflow: 'hidden',
+            }}
+            elevation={0}
+          >
             <BottomNavigation
               showLabels
               value={navValue}
               onChange={(event, newValue) => navigate(newValue)}
               sx={{
+                px: 0,
+                py: 0,
+                bgcolor: 'transparent',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 '& .MuiBottomNavigationAction-root': {
+                  flex: 1,
                   minWidth: 60,
-                  fontSize: '0.75rem',
+                  minHeight: 48,
+                  borderRadius: 3,
+                  mx: 0.3,
+                  my: 0,
+                  px: 1.1,
+                  py: 0.45,
+                  color: 'text.secondary',
+                  transition: 'all 0.22s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  '& .MuiSvgIcon-root': {
+                    fontSize: '1.25rem',
+                    transition: 'all 0.22s ease',
+                  },
+                  '&.Mui-selected': {
+                    color: '#ffffff',
+                    background: 'linear-gradient(135deg, #1565c0 0%, #42a5f5 100%)',
+                    boxShadow: '0 8px 18px rgba(21, 101, 192, 0.34)',
+                    '& .MuiSvgIcon-root': {
+                      color: '#ffffff',
+                    },
+                  },
                 },
                 '& .MuiBottomNavigationAction-label': {
                   fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  transform: 'none',
+                  transition: 'none',
+                  '&.Mui-selected': {
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                  },
                 },
               }}
             >
