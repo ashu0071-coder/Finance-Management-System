@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://finances-management-system.netlify.app/sitemap.xml
+Sitemap: https://finance-records.netlify.app/sitemap.xml
