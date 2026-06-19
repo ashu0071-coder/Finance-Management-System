@@ -25,8 +25,9 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { getLoans } from '../../services/loanService';
 import { getSettings } from '../../services/settingsService';
-import { getDailyPayments, getDailyReceipts } from '../../services/dailyTransService';
+import { getDailyDepositReturns, getDailyPayments, getDailyReceipts } from '../../services/dailyTransService';
 import { calculatePenalty } from '../../utils/calculations';
+import { calculateCashSummary } from '../../utils/dailyTransCalculations';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
@@ -58,6 +59,30 @@ const toSafeNumber = (value) => {
 };
 
 
+const isLoanOverdue = (loan, referenceDate = new Date()) => {
+  if (!loan || loan.status === 'closed' || !loan.current_due_date) {
+    return false;
+  }
+
+
+  const dueDate = new Date(loan.current_due_date);
+  if (Number.isNaN(dueDate.getTime())) {
+    return false;
+  }
+
+
+  const dueDateOnly = new Date(dueDate);
+  dueDateOnly.setHours(0, 0, 0, 0);
+
+
+  const referenceDateOnly = new Date(referenceDate);
+  referenceDateOnly.setHours(0, 0, 0, 0);
+
+
+  return dueDateOnly < referenceDateOnly;
+};
+
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -69,6 +94,7 @@ export default function Dashboard() {
   const [cashInBankBase, setCashInBankBase] = useState(0);
   const [dailyReceipts, setDailyReceipts] = useState([]);
   const [dailyPayments, setDailyPayments] = useState([]);
+  const [dailyDepositReturns, setDailyDepositReturns] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // all, overdue, active, closed
 
@@ -81,15 +107,17 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [loansData, settingsData, receiptData, paymentData] = await Promise.all([
+      const [loansData, settingsData, receiptData, paymentData, depositReturnData] = await Promise.all([
         getLoans(),
         getSettings(),
         getDailyReceipts(),
         getDailyPayments(),
+        getDailyDepositReturns(),
       ]);
       setLoans(loansData);
       setDailyReceipts(receiptData);
       setDailyPayments(paymentData);
+      setDailyDepositReturns(depositReturnData);
      
       const penaltySetting = settingsData.find(s => s.key === 'penalty_rate_annual');
       if (penaltySetting) {
@@ -120,57 +148,27 @@ export default function Dashboard() {
 
 
   const activeLoans = loans?.filter((l) => l.status === 'active') ?? [];
-  const overdueLoans = loans?.filter((l) => l.status === 'overdue') ?? [];
+  const overdueLoans = loans?.filter((l) => isLoanOverdue(l)) ?? [];
   const closedLoans = loans?.filter((l) => l.status === 'closed') ?? [];
  
-  // Finance pool is now derived from daily transaction inflow/outflow and loan outflow.
-  const totalDepositReceipts = dailyReceipts
-    .filter((record) => !isBankAmountReceipt(record))
-    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
-  const totalBankAmountReceipts = dailyReceipts
-    .filter((record) => isBankAmountReceipt(record))
-    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
+  const cashSummary = calculateCashSummary({
+    receipts: dailyReceipts,
+    payments: dailyPayments,
+    loans,
+    depositReturns: dailyDepositReturns,
+  });
+
+
+  const totalDepositReceipts = cashSummary.totalDepositReceipts;
+  const totalBankAmountReceipts = cashSummary.totalBankAmountReceipts;
   const totalReceiptInflow = totalDepositReceipts + totalBankAmountReceipts;
-
-
-  const totalDailyPaymentOutflow = dailyPayments.reduce(
-    (sum, record) => sum + toSafeNumber(record.amount),
-    0
-  );
-
-
-  const totalBankAccountPaymentInflow = dailyPayments.reduce((sum, record) => {
-    const paymentType = String(record.payment_type || '').trim().toLowerCase();
-    return paymentType === 'bank account' ? sum + toSafeNumber(record.amount) : sum;
-  }, 0);
-
-
-  // Use remaining outstanding balance so repayment automatically reduces loan outflow.
-  const totalLoanOutflow = loans.reduce(
-    (sum, loan) => sum + toSafeNumber(loan.outstanding_amount),
-    0
-  );
-
-
-  // Upfront deduction (interest + bond fee) and over-collection above
-  // total loan amount should be added back into finance.
-  const totalLoanExtraCollection = loans.reduce((sum, loan) => {
-    const netDisbursed = toSafeNumber(loan.net_disbursed_amount);
-    const paid = toSafeNumber(loan.total_paid);
-    const loanAmount = toSafeNumber(loan.total_loan_amount);
-
-
-    const upfrontDeduction = Math.max(0, loanAmount - netDisbursed);
-    const overCollection = Math.max(0, paid - loanAmount);
-
-
-    return sum + upfrontDeduction + overCollection;
-  }, 0);
+  const totalBankAccountPaymentInflow = cashSummary.totalBankAccountPaymentInflow;
+  const totalLoanOutflow = cashSummary.totalLoanOutflow;
+  const totalLoanExtraCollection = cashSummary.totalLoanExtraCollection;
 
 
   const totalFinanceAmount = totalReceiptInflow;
-  const remainingFinanceAmountRaw =
-    totalReceiptInflow - totalDailyPaymentOutflow - totalLoanOutflow + totalLoanExtraCollection;
+  const remainingFinanceAmountRaw = cashSummary.rawCashInHand;
   const remainingCashInBankRaw =
     cashInBankBase - totalBankAmountReceipts + totalBankAccountPaymentInflow;
 
@@ -221,8 +219,7 @@ export default function Dashboard() {
     }
 
 
-    const isLoanOverdue = loan.status !== 'closed' && dueDate < new Date();
-    if (!isLoanOverdue) {
+    if (!isLoanOverdue(loan)) {
       return storedPenalty;
     }
 
@@ -378,7 +375,7 @@ export default function Dashboard() {
         {/* Financial Metrics - Professional Clean Design */}
         <Box>
           <Typography
-            variant="h6"
+            variant="h4"
             fontWeight={700}
             sx={{ mb: 3, color: '#1a1a1a', letterSpacing: 0.5 }}
           >
@@ -438,7 +435,7 @@ export default function Dashboard() {
                     variant="body2"
                     sx={{ fontWeight: 600, color: '#666666', mb: 1.2, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: 0.5 }}
                   >
-                    Loan Amount Issued (-)
+                    Loan Amount Issued
                   </Typography>
                   <Typography
                     variant="h5"
@@ -472,7 +469,7 @@ export default function Dashboard() {
                     variant="body2"
                     sx={{ fontWeight: 600, color: '#666666', mb: 1.2, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: 0.5 }}
                   >
-                    Collection & Interest (+)
+                    Collection & Interest
                   </Typography>
                   <Typography
                     variant="h5"
@@ -539,13 +536,13 @@ export default function Dashboard() {
                   </Typography>
                   <Typography
                     variant="h3"
-                    sx={{ color: '#000000', fontWeight: 800, fontSize: '2.8rem', letterSpacing: -1 }}
+                    sx={{ color: '#000000', fontWeight: 800, fontSize: '2.2rem', letterSpacing: -1 }}
                   >
                     ₹{Math.round(remainingFinanceAmount).toLocaleString('en-IN')}
                   </Typography>
                 </Box>
                 <Box sx={{ textAlign: 'right', color: '#999999' }}>
-                  <Typography variant="caption" sx={{ fontSize: '0.8rem' }}>
+                  <Typography variant="caption" sx={{ fontSize: '1rem' }}>
                     Cash in Hand
                   </Typography>
                 </Box>
@@ -695,7 +692,7 @@ export default function Dashboard() {
             >
               <Stack spacing={2}>
                 {filteredLoans.map((loan) => {
-                  const isOverdue = loan.status !== 'closed' && new Date(loan.current_due_date) < new Date();
+                  const isOverdue = isLoanOverdue(loan);
                   const penaltyAmount = getLivePenaltyAmount(loan);
 
 

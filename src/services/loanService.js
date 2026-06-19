@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { getCurrentUser } from './authService';
+import { calculateCashSummary } from '../utils/dailyTransCalculations';
 
 
 const FINANCE_ROLES = new Set(['finance', 'finance_manager', 'finance_member']);
@@ -23,7 +24,12 @@ const getAvailableCashInHand = async (financeCompanyId) => {
 
   let paymentsQuery = supabase
     .from('daily_payments')
-    .select('amount');
+    .select('amount, payment_type');
+
+
+  let depositReturnsQuery = supabase
+    .from('daily_deposit_returns')
+    .select('principal_amount, return_amount');
 
 
   let loansQuery = supabase
@@ -34,62 +40,36 @@ const getAvailableCashInHand = async (financeCompanyId) => {
   if (financeCompanyId) {
     receiptsQuery = receiptsQuery.eq('finance_company_id', financeCompanyId);
     paymentsQuery = paymentsQuery.eq('finance_company_id', financeCompanyId);
+    depositReturnsQuery = depositReturnsQuery.eq('finance_company_id', financeCompanyId);
     loansQuery = loansQuery.eq('finance_company_id', financeCompanyId);
   }
 
 
-  const [{ data: receipts, error: receiptsError }, { data: payments, error: paymentsError }, { data: loans, error: loansError }] = await Promise.all([
+  const [
+    { data: receipts, error: receiptsError },
+    { data: payments, error: paymentsError },
+    { data: depositReturns, error: depositReturnsError },
+    { data: loans, error: loansError },
+  ] = await Promise.all([
     receiptsQuery,
     paymentsQuery,
+    depositReturnsQuery,
     loansQuery,
   ]);
 
 
   if (receiptsError) throw receiptsError;
   if (paymentsError) throw paymentsError;
+  if (depositReturnsError) throw depositReturnsError;
   if (loansError) throw loansError;
 
 
-  const totalDepositReceipts = (receipts || [])
-    .filter((record) => !String(record?.name || '').startsWith(BANK_AMOUNT_NAME_PREFIX))
-    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
-
-
-  const totalBankAmountReceipts = (receipts || [])
-    .filter((record) => String(record?.name || '').startsWith(BANK_AMOUNT_NAME_PREFIX))
-    .reduce((sum, record) => sum + toSafeNumber(record.deposit_amount), 0);
-
-
-  const totalDailyPaymentOutflow = (payments || []).reduce(
-    (sum, record) => sum + toSafeNumber(record.amount),
-    0
-  );
-
-
-  const totalLoanOutflow = (loans || []).reduce(
-    (sum, loan) => sum + toSafeNumber(loan.outstanding_amount),
-    0
-  );
-
-
-  const totalLoanExtraCollection = (loans || []).reduce((sum, loan) => {
-    const loanAmount = toSafeNumber(loan.total_loan_amount);
-    const netDisbursed = toSafeNumber(loan.net_disbursed_amount);
-    const paid = toSafeNumber(loan.total_paid);
-
-
-    const upfrontDeduction = Math.max(0, loanAmount - netDisbursed);
-    const overCollection = Math.max(0, paid - loanAmount);
-    return sum + upfrontDeduction + overCollection;
-  }, 0);
-
-
-  const availableCashInHand =
-    totalDepositReceipts +
-    totalBankAmountReceipts -
-    totalDailyPaymentOutflow -
-    totalLoanOutflow +
-    totalLoanExtraCollection;
+  const availableCashInHand = calculateCashSummary({
+    receipts,
+    payments,
+    loans,
+    depositReturns,
+  }).rawCashInHand;
 
 
   return Math.max(0, availableCashInHand);

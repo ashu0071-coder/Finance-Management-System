@@ -138,6 +138,33 @@ export const getDailyPayments = async () => {
 };
 
 
+export const getDailyDepositReturns = async () => {
+  const currentUser = getCurrentUser();
+
+
+  if (isFinanceRole(currentUser?.role) && !currentUser?.finance_company_id) {
+    return [];
+  }
+
+
+  let query = supabase
+    .from('daily_deposit_returns')
+    .select('*')
+    .order('closing_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
+
+  query = applyCompanyFilter(query, currentUser);
+
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+
+  return data || [];
+};
+
+
 export const createDailyPayment = async (payment) => {
   const currentUser = getCurrentUser();
 
@@ -203,4 +230,34 @@ export const deleteDailyPayment = async (id) => {
 
   const { error } = await query;
   if (error) throw error;
+};
+
+
+export const returnDailyDeposit = async ({
+  receiptId,
+  returnAmount,
+  interestAmount,
+  closingDate,
+}) => {
+  const currentUser = getCurrentUser();
+  const isFinanceUser = isFinanceRole(currentUser?.role);
+
+
+  if (isFinanceUser && !currentUser?.finance_company_id) {
+    throw new Error('Access denied: No finance company assigned');
+  }
+
+
+  const { data, error } = await supabase.rpc('return_daily_deposit', {
+    p_receipt_id: receiptId,
+    p_finance_company_id: isFinanceUser ? currentUser.finance_company_id : null,
+    p_created_by: currentUser?.id || null,
+    p_return_amount: returnAmount,
+    p_interest_amount: interestAmount,
+    p_closing_date: closingDate,
+  });
+
+
+  if (error) throw error;
+  return data;
 };

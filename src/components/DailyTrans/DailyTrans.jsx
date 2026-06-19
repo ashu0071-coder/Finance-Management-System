@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
+  Alert, 
   Box,
   Button,
   Card,
@@ -30,17 +30,24 @@ import {
   createDailyReceipt,
   deleteDailyPayment,
   deleteDailyReceipt,
+  getDailyDepositReturns,
   getDailyPayments,
   getDailyReceipts,
+  returnDailyDeposit,
   updateDailyPayment,
   updateDailyReceipt,
 } from '../../services/dailyTransService';
 import { getLoans } from '../../services/loanService';
 import { getSettings } from '../../services/settingsService';
+import {
+  BANK_AMOUNT_NAME_PREFIX,
+  calculateCashSummary,
+  isBankAmountReceipt,
+  isWithinDateRange,
+} from '../../utils/dailyTransCalculations';
 
 
 const todayISO = () => new Date().toISOString().split('T')[0];
-const BANK_AMOUNT_NAME_PREFIX = 'BANK_AMOUNT:';
 const TRANSACTION_TYPE_OPTIONS = [
   'Salary',
   'Stationery',
@@ -52,10 +59,6 @@ const TRANSACTION_TYPE_OPTIONS = [
   'Other Exp',
   'Bank Account',
 ];
-
-
-const isBankAmountReceipt = (record) =>
-  typeof record?.name === 'string' && record.name.startsWith(BANK_AMOUNT_NAME_PREFIX);
 
 
 const buildBankAmountReceiptName = (type) => `${BANK_AMOUNT_NAME_PREFIX}${type}`;
@@ -133,9 +136,45 @@ const calculateAccruedInterest = (depositAmount, startDate, periodDays, percenta
 };
 
 
-export default function DailyTrans() {
+const getValidatedDepositReturn = ({ selectedDepositForReturn, depositReturnForm, rawCashInHand }) => {
+  if (!selectedDepositForReturn) {
+    throw new Error('Select a deposit to return.');
+  }
+
+
+  if (depositReturnForm.closing_date < selectedDepositForReturn.entry_date) {
+    throw new Error('Closing date cannot be earlier than the deposit date.');
+  }
+
+
+  const returnAmount = Math.round(toNumber(depositReturnForm.amount));
+  if (returnAmount <= 0) {
+    throw new Error('Return amount must be greater than 0.');
+  }
+
+
+  const availableForReturn = Math.max(0, Math.round(rawCashInHand));
+  if (returnAmount > availableForReturn) {
+    throw new Error(
+      `Insufficient cash in hand. Available ₹${availableForReturn.toLocaleString('en-IN')}, requested ₹${returnAmount.toLocaleString('en-IN')}. Please enter a lower amount.`
+    );
+  }
+
+
+  const principalAmount = Math.round(toNumber(selectedDepositForReturn.deposit_amount));
+
+
+  return {
+    returnAmount,
+    interestAmount: Math.max(0, returnAmount - principalAmount),
+  };
+};
+
+
+export default function DailyTrans() { // NOSONAR
   const [activeTab, setActiveTab] = useState('receipt');
   const [receiptTab, setReceiptTab] = useState('deposit');
+  const [paymentTab, setPaymentTab] = useState('payment');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -165,8 +204,16 @@ export default function DailyTrans() {
   });
 
 
+  const [depositReturnForm, setDepositReturnForm] = useState({
+    receipt_id: '',
+    amount: '',
+    closing_date: todayISO(),
+  });
+
+
   const [receipts, setReceipts] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [depositReturns, setDepositReturns] = useState([]);
   const [loans, setLoans] = useState([]);
   const [cashInBankBase, setCashInBankBase] = useState(0);
   const [editingReceiptId, setEditingReceiptId] = useState(null);
@@ -178,6 +225,11 @@ export default function DailyTrans() {
   });
   const [paymentFilters, setPaymentFilters] = useState({
     type: '',
+    fromDate: '',
+    toDate: '',
+  });
+  const [depositReturnFilters, setDepositReturnFilters] = useState({
+    search: '',
     fromDate: '',
     toDate: '',
   });
@@ -203,14 +255,16 @@ export default function DailyTrans() {
     try {
       setLoading(true);
       setError(null);
-      const [receiptData, paymentData, loansData, settingsData] = await Promise.all([
+      const [receiptData, paymentData, depositReturnData, loansData, settingsData] = await Promise.all([
         getDailyReceipts(),
         getDailyPayments(),
+        getDailyDepositReturns(),
         getLoans(),
         getSettings(),
       ]);
       setReceipts(receiptData);
       setPayments(paymentData);
+      setDepositReturns(depositReturnData);
       setLoans(loansData);
 
 
@@ -225,56 +279,21 @@ export default function DailyTrans() {
   };
 
 
-  const totalDepositReceipts = useMemo(() => {
-    return receipts
-      .filter((record) => !isBankAmountReceipt(record))
-      .reduce((sum, record) => sum + toNumber(record.deposit_amount), 0);
-  }, [receipts]);
+  const cashSummary = useMemo(() => {
+    return calculateCashSummary({
+      receipts,
+      payments,
+      loans,
+      depositReturns,
+    });
+  }, [receipts, payments, loans, depositReturns]);
 
 
-  const totalBankAmountReceipts = useMemo(() => {
-    return receipts
-      .filter((record) => isBankAmountReceipt(record))
-      .reduce((sum, record) => sum + toNumber(record.deposit_amount), 0);
-  }, [receipts]);
-
-
-  const totalDailyPaymentOutflow = useMemo(() => {
-    return payments.reduce((sum, record) => sum + toNumber(record.amount), 0);
-  }, [payments]);
-
-
-  const totalBankAccountPaymentInflow = useMemo(() => {
-    return payments.reduce((sum, record) => {
-      const paymentType = String(record.payment_type || '').trim().toLowerCase();
-      return paymentType === 'bank account' ? sum + toNumber(record.amount) : sum;
-    }, 0);
-  }, [payments]);
-
-
-  const totalLoanOutflow = useMemo(() => {
-    return loans.reduce((sum, loan) => sum + toNumber(loan.outstanding_amount), 0);
-  }, [loans]);
-
-
-  const totalLoanExtraCollection = useMemo(() => {
-    return loans.reduce((sum, loan) => {
-      const loanAmount = toNumber(loan.total_loan_amount);
-      const netDisbursed = toNumber(loan.net_disbursed_amount);
-      const paid = toNumber(loan.total_paid);
-      const upfrontDeduction = Math.max(0, loanAmount - netDisbursed);
-      const overCollection = Math.max(0, paid - loanAmount);
-      return sum + upfrontDeduction + overCollection;
-    }, 0);
-  }, [loans]);
-
-
-  const rawCashInHand =
-    totalDepositReceipts +
-    totalBankAmountReceipts -
-    totalDailyPaymentOutflow -
-    totalLoanOutflow +
-    totalLoanExtraCollection;
+  const {
+    rawCashInHand,
+    totalBankAmountReceipts,
+    totalBankAccountPaymentInflow,
+  } = cashSummary;
 
 
   const rawCashInBank =
@@ -297,6 +316,11 @@ export default function DailyTrans() {
 
   const handleBankAmountChange = (field, value) => {
     setBankAmountForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+
+  const handleDepositReturnChange = (field, value) => {
+    setDepositReturnForm((prev) => ({ ...prev, [field]: value }));
   };
 
 
@@ -487,6 +511,61 @@ export default function DailyTrans() {
   }, [receiptRows]);
 
 
+  const selectedDepositForReturn = useMemo(() => {
+    return depositReceiptRows.find((record) => record.id === depositReturnForm.receipt_id) || null;
+  }, [depositReceiptRows, depositReturnForm.receipt_id]);
+
+
+  const suggestedDepositReturnInterest = useMemo(() => {
+    if (!selectedDepositForReturn) {
+      return 0;
+    }
+
+
+    return calculateAccruedInterest(
+      selectedDepositForReturn.deposit_amount,
+      selectedDepositForReturn.entry_date,
+      selectedDepositForReturn.period_days,
+      selectedDepositForReturn.percentage,
+      depositReturnForm.closing_date
+    );
+  }, [selectedDepositForReturn, depositReturnForm.closing_date]);
+
+
+  const suggestedDepositReturnAmount = useMemo(() => {
+    if (!selectedDepositForReturn) {
+      return 0;
+    }
+
+
+    return Math.round(toNumber(selectedDepositForReturn.deposit_amount) + suggestedDepositReturnInterest);
+  }, [selectedDepositForReturn, suggestedDepositReturnInterest]);
+
+
+  useEffect(() => {
+    if (!selectedDepositForReturn) {
+      setDepositReturnForm((prev) => {
+        if (prev.amount === '') {
+          return prev;
+        }
+
+
+        return {
+          ...prev,
+          amount: '',
+        };
+      });
+      return;
+    }
+
+
+    setDepositReturnForm((prev) => ({
+      ...prev,
+      amount: suggestedDepositReturnAmount > 0 ? suggestedDepositReturnAmount.toString() : '',
+    }));
+  }, [selectedDepositForReturn, suggestedDepositReturnAmount]);
+
+
   const bankAmountRows = useMemo(() => {
     return receiptRows
       .filter((record) => isBankAmountReceipt(record))
@@ -507,13 +586,7 @@ export default function DailyTrans() {
       if (search && !recordName.includes(search)) {
         return false;
       }
-      if (receiptFilters.fromDate && recordDate < receiptFilters.fromDate) {
-        return false;
-      }
-      if (receiptFilters.toDate && recordDate > receiptFilters.toDate) {
-        return false;
-      }
-      return true;
+      return isWithinDateRange(recordDate, receiptFilters.fromDate, receiptFilters.toDate);
     });
   }, [depositReceiptRows, receiptFilters]);
 
@@ -528,13 +601,7 @@ export default function DailyTrans() {
       if (search && !recordType.includes(search)) {
         return false;
       }
-      if (receiptFilters.fromDate && recordDate < receiptFilters.fromDate) {
-        return false;
-      }
-      if (receiptFilters.toDate && recordDate > receiptFilters.toDate) {
-        return false;
-      }
-      return true;
+      return isWithinDateRange(recordDate, receiptFilters.fromDate, receiptFilters.toDate);
     });
   }, [bankAmountRows, receiptFilters]);
 
@@ -549,15 +616,24 @@ export default function DailyTrans() {
       if (typeFilter && !recordType.includes(typeFilter)) {
         return false;
       }
-      if (paymentFilters.fromDate && recordDate < paymentFilters.fromDate) {
-        return false;
-      }
-      if (paymentFilters.toDate && recordDate > paymentFilters.toDate) {
-        return false;
-      }
-      return true;
+      return isWithinDateRange(recordDate, paymentFilters.fromDate, paymentFilters.toDate);
     });
   }, [payments, paymentFilters]);
+
+
+  const filteredDepositReturnRows = useMemo(() => {
+    return depositReturns.filter((record) => {
+      const search = depositReturnFilters.search.trim().toLowerCase();
+      const recordName = (record.name || '').toLowerCase();
+      const recordDate = record.closing_date || '';
+
+
+      if (search && !recordName.includes(search)) {
+        return false;
+      }
+      return isWithinDateRange(recordDate, depositReturnFilters.fromDate, depositReturnFilters.toDate);
+    });
+  }, [depositReturns, depositReturnFilters]);
 
 
   let receiptSubmitLabel = 'Save';
@@ -574,6 +650,9 @@ export default function DailyTrans() {
   } else if (editingPaymentId) {
     paymentSubmitLabel = 'Update';
   }
+
+
+  const depositReturnSubmitLabel = loading ? 'Saving...' : 'Return Deposit';
 
 
   const headerCellSx = {
@@ -595,37 +674,15 @@ export default function DailyTrans() {
   };
 
 
+  const isDepositReceiptTab = receiptTab === 'deposit';
   let receiptFormTitle = 'Bank Amount Entry';
-  if (receiptTab === 'deposit') {
+  if (isDepositReceiptTab) {
     receiptFormTitle = editingReceiptId ? 'Edit Deposit' : 'Deposit Entry';
   }
-
-
-  const isDepositReceiptTab = receiptTab === 'deposit';
-
-
-  let receiptRecordsTitle = 'Bank Amount Records';
-  if (isDepositReceiptTab) {
-    receiptRecordsTitle = 'Deposit Records';
-  }
-
-
-  let receiptFilterLabel = 'Filter by Type';
-  if (isDepositReceiptTab) {
-    receiptFilterLabel = 'Filter by Name';
-  }
-
-
-  let receiptTableMinWidth = 520;
-  if (isDepositReceiptTab) {
-    receiptTableMinWidth = 780;
-  }
-
-
-  let bankAmountSaveLabel = 'Save';
-  if (loading) {
-    bankAmountSaveLabel = 'Saving...';
-  }
+  const receiptRecordsTitle = isDepositReceiptTab ? 'Deposit Records' : 'Bank Amount Records';
+  const receiptFilterLabel = isDepositReceiptTab ? 'Filter by Name' : 'Filter by Type';
+  const receiptTableMinWidth = isDepositReceiptTab ? 780 : 520;
+  const bankAmountSaveLabel = loading ? 'Saving...' : 'Save';
 
 
   const handleEditReceipt = (record) => {
@@ -720,6 +777,46 @@ export default function DailyTrans() {
       await fetchData();
     } catch (err) {
       setError(err.message || 'Failed to delete payment');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleSaveDepositReturn = async (event) => {
+    event.preventDefault();
+
+
+    try {
+      setLoading(true);
+      setError(null);
+      setSuccessMessage('');
+      const { returnAmount, interestAmount } = getValidatedDepositReturn({
+        selectedDepositForReturn,
+        depositReturnForm,
+        rawCashInHand,
+      });
+
+
+      await returnDailyDeposit({
+        receiptId: selectedDepositForReturn.id,
+        returnAmount,
+        interestAmount,
+        closingDate: depositReturnForm.closing_date,
+      });
+
+
+      setDepositReturnForm({
+        receipt_id: '',
+        amount: '',
+        closing_date: todayISO(),
+      });
+
+
+      setSuccessMessage('Deposit returned successfully.');
+      await fetchData();
+    } catch (err) {
+      setError(err.message || 'Failed to return deposit');
     } finally {
       setLoading(false);
     }
@@ -1216,11 +1313,26 @@ export default function DailyTrans() {
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                {editingPaymentId ? 'Edit Payment' : 'Payment Entry'}
+                Payments
               </Typography>
               <Divider sx={{ mb: 3 }} />
 
 
+              <Tabs
+                value={paymentTab}
+                onChange={(event, value) => {
+                  setPaymentTab(value);
+                  setError(null);
+                  setSuccessMessage('');
+                }}
+                sx={{ mb: 3 }}
+              >
+                <Tab label="Payment" value="payment" />
+                <Tab label="Deposit Return" value="deposit_return" />
+              </Tabs>
+
+
+              {paymentTab === 'payment' && (
               <Box component="form" onSubmit={handleSavePayment}>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={4}>
@@ -1292,6 +1404,76 @@ export default function DailyTrans() {
                   )}
                 </Box>
               </Box>
+              )}
+
+
+              {paymentTab === 'deposit_return' && (
+                <Box component="form" onSubmit={handleSaveDepositReturn}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        select
+                        fullWidth
+                        required
+                        label="Deposit"
+                        value={depositReturnForm.receipt_id}
+                        onChange={(e) => handleDepositReturnChange('receipt_id', e.target.value)}
+                        helperText={depositReceiptRows.length === 0 ? 'No active deposits available for return.' : 'Select the deposit to close.'}
+                      >
+                        {depositReceiptRows.map((record) => (
+                          <MenuItem key={record.id} value={record.id}>
+                            {record.name} - ₹{Math.round(toNumber(record.deposit_amount)).toLocaleString('en-IN')}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+
+
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        required
+                        type="number"
+                        label="Amount"
+                        value={depositReturnForm.amount}
+                        onChange={(e) => handleDepositReturnChange('amount', e.target.value)}
+                        inputProps={{ min: 0 }}
+                        InputProps={{ startAdornment: '₹' }}
+                        helperText={selectedDepositForReturn
+                          ? `Suggested: ₹${suggestedDepositReturnAmount.toLocaleString('en-IN')} as of selected closing date.`
+                          : 'Amount auto-fills after you select a deposit.'}
+                      />
+                    </Grid>
+
+
+                    <Grid item xs={12} sm={4}>
+                      <TextField
+                        fullWidth
+                        required
+                        type="date"
+                        label="Closing Date"
+                        value={depositReturnForm.closing_date}
+                        onChange={(e) => handleDepositReturnChange('closing_date', e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                  </Grid>
+
+
+                  {selectedDepositForReturn && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Principal ₹{Math.round(toNumber(selectedDepositForReturn.deposit_amount)).toLocaleString('en-IN')} + accrued interest ₹{suggestedDepositReturnInterest.toLocaleString('en-IN')} = suggested return ₹{suggestedDepositReturnAmount.toLocaleString('en-IN')}.
+                    </Alert>
+                  )}
+
+
+                  <Box sx={{ mt: 3 }}>
+                    <Button type="submit" variant="contained" disabled={loading || depositReceiptRows.length === 0}>
+                      {depositReturnSubmitLabel}
+                    </Button>
+                  </Box>
+                </Box>
+              )}
             </CardContent>
           </Card>
 
@@ -1300,55 +1482,103 @@ export default function DailyTrans() {
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
                 <Typography variant="h6" gutterBottom>
-                  Payment Records
+                  {paymentTab === 'payment' ? 'Payment Records' : 'Deposit Return Records'}
                 </Typography>
-                <Button variant="outlined" onClick={handleDownloadPaymentPdf}>
-                  Download Payment PDF
-                </Button>
+                {paymentTab === 'payment' && (
+                  <Button variant="outlined" onClick={handleDownloadPaymentPdf}>
+                    Download Payment PDF
+                  </Button>
+                )}
               </Box>
               <Divider sx={{ mb: 2 }} />
 
 
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    fullWidth
-                    label="Filter by Type"
-                    value={paymentFilters.type}
-                    onChange={(e) => setPaymentFilters((prev) => ({ ...prev, type: e.target.value }))}
-                  />
+              {paymentTab === 'payment' && (
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Filter by Type"
+                      value={paymentFilters.type}
+                      onChange={(e) => setPaymentFilters((prev) => ({ ...prev, type: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="From Date"
+                      value={paymentFilters.fromDate}
+                      onChange={(e) => setPaymentFilters((prev) => ({ ...prev, fromDate: e.target.value }))}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="To Date"
+                      value={paymentFilters.toDate}
+                      onChange={(e) => setPaymentFilters((prev) => ({ ...prev, toDate: e.target.value }))}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={2}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      sx={{ height: '100%' }}
+                      onClick={() => setPaymentFilters({ type: '', fromDate: '', toDate: '' })}
+                    >
+                      Clear
+                    </Button>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={3}>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    label="From Date"
-                    value={paymentFilters.fromDate}
-                    onChange={(e) => setPaymentFilters((prev) => ({ ...prev, fromDate: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
+              )}
+
+
+              {paymentTab === 'deposit_return' && (
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Filter by Name"
+                      value={depositReturnFilters.search}
+                      onChange={(e) => setDepositReturnFilters((prev) => ({ ...prev, search: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="From Date"
+                      value={depositReturnFilters.fromDate}
+                      onChange={(e) => setDepositReturnFilters((prev) => ({ ...prev, fromDate: e.target.value }))}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="To Date"
+                      value={depositReturnFilters.toDate}
+                      onChange={(e) => setDepositReturnFilters((prev) => ({ ...prev, toDate: e.target.value }))}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={2}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      sx={{ height: '100%' }}
+                      onClick={() => setDepositReturnFilters({ search: '', fromDate: '', toDate: '' })}
+                    >
+                      Clear
+                    </Button>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={3}>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    label="To Date"
-                    value={paymentFilters.toDate}
-                    onChange={(e) => setPaymentFilters((prev) => ({ ...prev, toDate: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={2}>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    sx={{ height: '100%' }}
-                    onClick={() => setPaymentFilters({ type: '', fromDate: '', toDate: '' })}
-                  >
-                    Clear
-                  </Button>
-                </Grid>
-              </Grid>
+              )}
 
 
               <TableContainer
@@ -1360,7 +1590,7 @@ export default function DailyTrans() {
                   size="small"
                   stickyHeader
                   sx={{
-                    minWidth: 560,
+                    minWidth: paymentTab === 'payment' ? 560 : 860,
                     '& .MuiTableRow-root:nth-of-type(even)': {
                       backgroundColor: 'action.hover',
                     },
@@ -1370,22 +1600,40 @@ export default function DailyTrans() {
                   }}
                 >
                   <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ ...headerCellSx, minWidth: 190 }}>Type</TableCell>
-                      <TableCell align="right" sx={{ ...headerCellSx, minWidth: 130 }}>Amount</TableCell>
-                      <TableCell sx={{ ...headerCellSx, minWidth: 130 }}>Date</TableCell>
-                      <TableCell align="center" sx={{ ...headerCellSx, minWidth: 110 }}>Actions</TableCell>
-                    </TableRow>
+                    {paymentTab === 'payment' && (
+                      <TableRow>
+                        <TableCell sx={{ ...headerCellSx, minWidth: 190 }}>Type</TableCell>
+                        <TableCell align="right" sx={{ ...headerCellSx, minWidth: 130 }}>Amount</TableCell>
+                        <TableCell sx={{ ...headerCellSx, minWidth: 130 }}>Date</TableCell>
+                        <TableCell align="center" sx={{ ...headerCellSx, minWidth: 110 }}>Actions</TableCell>
+                      </TableRow>
+                    )}
+
+
+                    {paymentTab === 'deposit_return' && (
+                      <TableRow>
+                        <TableCell sx={{ ...headerCellSx, minWidth: 180 }}>Name</TableCell>
+                        <TableCell align="right" sx={{ ...headerCellSx, minWidth: 130 }}>Principal</TableCell>
+                        <TableCell align="right" sx={{ ...headerCellSx, minWidth: 130 }}>Interest</TableCell>
+                        <TableCell align="right" sx={{ ...headerCellSx, minWidth: 130 }}>Returned Amount</TableCell>
+                        <TableCell sx={{ ...headerCellSx, minWidth: 120 }}>Deposit Date</TableCell>
+                        <TableCell sx={{ ...headerCellSx, minWidth: 120 }}>Closing Date</TableCell>
+                        <TableCell align="right" sx={{ ...headerCellSx, minWidth: 95 }}>Period</TableCell>
+                        <TableCell align="right" sx={{ ...headerCellSx, minWidth: 95 }}>Percentage</TableCell>
+                      </TableRow>
+                    )}
                   </TableHead>
                   <TableBody>
-                    {filteredPaymentRows.length === 0 && (
+                    {paymentTab === 'payment' && filteredPaymentRows.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={4} align="center" sx={{ py: 3, color: 'text.secondary', fontStyle: 'italic' }}>
                           No payments found.
                         </TableCell>
                       </TableRow>
                     )}
-                    {filteredPaymentRows.map((record) => (
+
+
+                    {paymentTab === 'payment' && filteredPaymentRows.map((record) => (
                       <TableRow key={record.id}>
                         <TableCell sx={bodyCellSx}>{formatTransactionType(record.payment_type)}</TableCell>
                         <TableCell align="right" sx={{ ...bodyCellSx, fontWeight: 700 }}>
@@ -1400,6 +1648,33 @@ export default function DailyTrans() {
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
+                      </TableRow>
+                    ))}
+
+
+                    {paymentTab === 'deposit_return' && filteredDepositReturnRows.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center" sx={{ py: 3, color: 'text.secondary', fontStyle: 'italic' }}>
+                          No deposit returns found.
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+
+                    {paymentTab === 'deposit_return' && filteredDepositReturnRows.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell sx={bodyCellSx}>{record.name}</TableCell>
+                        <TableCell align="right" sx={bodyCellSx}>₹{Number(record.principal_amount).toLocaleString('en-IN')}</TableCell>
+                        <TableCell align="right" sx={{ ...bodyCellSx, color: 'success.main', fontWeight: 700 }}>
+                          ₹{Number(record.interest_amount).toLocaleString('en-IN')}
+                        </TableCell>
+                        <TableCell align="right" sx={{ ...bodyCellSx, fontWeight: 700 }}>
+                          ₹{Number(record.return_amount).toLocaleString('en-IN')}
+                        </TableCell>
+                        <TableCell sx={bodyCellSx}>{record.entry_date ? format(new Date(record.entry_date), 'dd/MMM/yyyy') : '-'}</TableCell>
+                        <TableCell sx={bodyCellSx}>{record.closing_date ? format(new Date(record.closing_date), 'dd/MMM/yyyy') : '-'}</TableCell>
+                        <TableCell align="right" sx={bodyCellSx}>{record.period_days}</TableCell>
+                        <TableCell align="right" sx={bodyCellSx}>{record.percentage}%</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
