@@ -162,15 +162,13 @@ export default function Dashboard() {
   const totalDepositReceipts = cashSummary.totalDepositReceipts;
   const totalBankAmountReceipts = cashSummary.totalBankAmountReceipts;
   const totalReceiptInflow = totalDepositReceipts + totalBankAmountReceipts;
-  const totalBankAccountPaymentInflow = cashSummary.totalBankAccountPaymentInflow;
   const totalLoanOutflow = cashSummary.totalLoanOutflow;
   const totalLoanExtraCollection = cashSummary.totalLoanExtraCollection;
 
 
   const totalFinanceAmount = totalReceiptInflow;
   const remainingFinanceAmountRaw = cashSummary.rawCashInHand;
-  const remainingCashInBankRaw =
-    cashInBankBase - totalBankAmountReceipts + totalBankAccountPaymentInflow;
+  const remainingCashInBankRaw = cashInBankBase;
 
 
   // Never show negative balances in the UI.
