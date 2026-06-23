@@ -3,6 +3,24 @@ import { getCurrentUser } from './authService';
 
 
 const FINANCE_ROLES = new Set(['finance', 'finance_manager', 'finance_member']);
+const DEFAULT_SETTINGS = {
+  default_interest_rate: {
+    value: '10',
+    description: 'Default interest rate percentage',
+  },
+  default_loan_tenure_months: {
+    value: '3',
+    description: 'Default loan tenure in months',
+  },
+  penalty_rate_annual: {
+    value: '80',
+    description: 'Annual penalty rate percentage',
+  },
+  cash_in_bank: {
+    value: '0',
+    description: 'Current cash available in bank',
+  },
+};
 
 
 const isFinanceRole = (role) => FINANCE_ROLES.has(role);
@@ -28,6 +46,73 @@ const updateSettingRows = async ({ key, value, now, financeCompanyId, onlyGlobal
 };
 
 
+const buildDefaultSettingPayload = ({ key, now, financeCompanyId = null }) => {
+  const defaultMeta = DEFAULT_SETTINGS[key] || { value: '0', description: null };
+
+
+  return {
+    key,
+    value: defaultMeta.value,
+    description: defaultMeta.description,
+    updated_at: now,
+    finance_company_id: financeCompanyId,
+  };
+};
+
+
+const ensureFinanceSettings = async (financeCompanyId) => {
+  const now = new Date().toISOString();
+  const desiredKeys = Object.keys(DEFAULT_SETTINGS);
+
+
+  const { data: scopedSettings, error: scopedError } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('finance_company_id', financeCompanyId)
+    .order('key');
+
+
+  if (scopedError) throw scopedError;
+
+
+  const existingKeys = new Set((scopedSettings || []).map((setting) => setting.key));
+  const missingKeys = desiredKeys.filter((key) => !existingKeys.has(key));
+
+
+  if (missingKeys.length === 0) {
+    return scopedSettings || [];
+  }
+
+
+  const insertPayload = missingKeys.map((key) =>
+    buildDefaultSettingPayload({ key, now, financeCompanyId })
+  );
+
+
+  const { error: insertError } = await supabase
+    .from('settings')
+    .insert(insertPayload);
+
+
+  if (insertError) {
+    throw new Error(
+      'Finance settings are not isolated yet. Run the tenant settings migration to scope settings by finance company before continuing.'
+    );
+  }
+
+
+  const { data: refreshedData, error: refreshedError } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('finance_company_id', financeCompanyId)
+    .order('key');
+
+
+  if (refreshedError) throw refreshedError;
+  return refreshedData || [];
+};
+
+
 const insertSettingRow = async ({ key, value, now, financeCompanyId }) => {
   const insertPayload = {
     key,
@@ -44,22 +129,6 @@ const insertSettingRow = async ({ key, value, now, financeCompanyId }) => {
 };
 
 
-const tryFinanceLegacyUpdate = async ({ isFinanceUser, key, value, now, onlyGlobal }) => {
-  if (!isFinanceUser) {
-    return [];
-  }
-
-
-  return updateSettingRows({
-    key,
-    value,
-    now,
-    financeCompanyId: null,
-    onlyGlobal,
-  });
-};
-
-
 /**
  * Get all settings
  */
@@ -72,36 +141,15 @@ export const getSettings = async () => {
   }
 
 
+  if (isFinanceRole(currentUser?.role) && currentUser?.finance_company_id) {
+    return ensureFinanceSettings(currentUser.finance_company_id);
+  }
+
+
   let query = supabase
     .from('settings')
     .select('*')
     .order('key');
-
-
-  if (isFinanceRole(currentUser?.role) && currentUser?.finance_company_id) {
-    query = query.eq('finance_company_id', currentUser.finance_company_id);
-
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-
-    if (data && data.length > 0) {
-      return data;
-    }
-
-
-    // Backward compatibility: legacy deployments keep a single global settings row per key.
-    const { data: fallbackData, error: fallbackError } = await supabase
-      .from('settings')
-      .select('*')
-      .is('finance_company_id', null)
-      .order('key');
-
-
-    if (fallbackError) throw fallbackError;
-    return fallbackData || [];
-  }
 
 
   const { data, error } = await query;
@@ -126,11 +174,53 @@ export const updateSetting = async (key, value) => {
   }
 
 
+  if (isFinanceUser) {
+    const scopedUpdates = await updateSettingRows({
+      key,
+      value,
+      now,
+      financeCompanyId,
+      onlyGlobal: false,
+    });
+
+
+    if (scopedUpdates.length > 0) {
+      return scopedUpdates[0];
+    }
+
+
+    const defaultMeta = DEFAULT_SETTINGS[key] || { description: null };
+    const insertPayload = {
+      key,
+      value,
+      description: defaultMeta.description,
+      updated_at: now,
+      finance_company_id: financeCompanyId,
+    };
+
+
+    const { data: insertedData, error: insertError } = await supabase
+      .from('settings')
+      .insert(insertPayload)
+      .select();
+
+
+    if (insertError) {
+      throw new Error(
+        'Finance settings are not isolated yet. Run the tenant settings migration to scope settings by finance company before continuing.'
+      );
+    }
+
+
+    return insertedData && insertedData.length > 0 ? insertedData[0] : null;
+  }
+
+
   const scopedUpdates = await updateSettingRows({
     key,
     value,
     now,
-    financeCompanyId: isFinanceUser ? financeCompanyId : null,
+    financeCompanyId: null,
     onlyGlobal: false,
   });
   if (scopedUpdates.length > 0) {
@@ -138,46 +228,20 @@ export const updateSetting = async (key, value) => {
   }
 
 
-  // Backward compatibility: if no tenant-scoped row exists, update the legacy global row.
-  const legacyUpdates = await tryFinanceLegacyUpdate({
-    isFinanceUser,
-    key,
-    value,
-    now,
-    onlyGlobal: true,
-  });
-  if (legacyUpdates.length > 0) {
-    return legacyUpdates[0];
-  }
-
-
   const { data: insertedData, error: insertError } = await insertSettingRow({
     key,
     value,
     now,
-    financeCompanyId: isFinanceUser ? financeCompanyId : null,
+    financeCompanyId: null,
   });
 
 
-  if (!insertError) {
-    return insertedData && insertedData.length > 0 ? insertedData[0] : null;
-  }
-
-
-  if (!isFinanceUser) {
+  if (insertError) {
     throw insertError;
   }
 
 
-  // Backward compatibility: unique key constraint on legacy schema prevents tenant inserts.
-  const fallbackUpdates = await tryFinanceLegacyUpdate({
-    isFinanceUser,
-    key,
-    value,
-    now,
-    onlyGlobal: false,
-  });
-  return fallbackUpdates.length > 0 ? fallbackUpdates[0] : null;
+  return insertedData && insertedData.length > 0 ? insertedData[0] : null;
 };
 
 
@@ -200,25 +264,8 @@ export const getSettingByKey = async (key) => {
 
 
   if (isFinanceRole(currentUser?.role) && currentUser?.finance_company_id) {
-    query = query.eq('finance_company_id', currentUser.finance_company_id);
-
-
-    const { data, error } = await query.single();
-    if (!error) {
-      return data;
-    }
-
-
-    const { data: fallbackData, error: fallbackError } = await supabase
-      .from('settings')
-      .select('*')
-      .eq('key', key)
-      .is('finance_company_id', null)
-      .single();
-
-
-    if (fallbackError) throw fallbackError;
-    return fallbackData;
+    const settings = await ensureFinanceSettings(currentUser.finance_company_id);
+    return settings.find((setting) => setting.key === key) || null;
   }
 
 

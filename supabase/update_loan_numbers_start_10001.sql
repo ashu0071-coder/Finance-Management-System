@@ -1,11 +1,35 @@
 -- =====================================================
--- UPDATE ALL EXISTING LOAN NUMBERS TO 10001, 10002, ...
--- Ordered by created_at (oldest first), then id for stable ordering.
--- This updates ONLY loans.loan_number.
+-- STANDARDIZE LOAN NUMBERS TO 10001, 10002, ...
+-- 1) Updates all existing loans (oldest first) to a pure numeric sequence.
+-- 2) Replaces DB auto-number function so future loans continue this sequence.
 -- =====================================================
 
 
 BEGIN;
+
+
+LOCK TABLE public.loans IN ACCESS EXCLUSIVE MODE;
+
+
+-- Step 0: Ensure future inserts also use numeric sequence from 10001.
+CREATE OR REPLACE FUNCTION public.generate_loan_number()
+RETURNS TEXT AS $$
+DECLARE
+    next_number INTEGER;
+BEGIN
+    SELECT GREATEST(
+      COALESCE(MAX((regexp_replace(loan_number, '\\D', '', 'g'))::INTEGER), 0) + 1,
+      10001
+    )
+    INTO next_number
+    FROM public.loans
+    WHERE loan_number IS NOT NULL
+      AND regexp_replace(loan_number, '\\D', '', 'g') <> '';
+
+
+    RETURN next_number::TEXT;
+END;
+$$ LANGUAGE plpgsql;
 
 
 -- Step 1: Temporary unique values to avoid unique-key conflicts during remap.
@@ -33,6 +57,3 @@ COMMIT;
 SELECT id, loan_number, created_at
 FROM public.loans
 ORDER BY created_at ASC, id ASC;
-
-
-

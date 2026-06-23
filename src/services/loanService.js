@@ -195,39 +195,6 @@ export const getLoan = async (id) => {
 
 
 /**
- * Generate loan number
- */
-const generateLoanNumber = async () => {
-  // Get the count of existing loans
-  const { data, error } = await supabase
-    .from('loans')
-    .select('loan_number', { count: 'exact', head: false })
-    .order('created_at', { ascending: false })
-    .limit(1);
- 
-  if (error && error.code !== 'PGRST116') throw error;
- 
-  // Generate loan number: LN + YEAR + sequential number (padded to 4 digits)
-  const year = new Date().getFullYear();
-  const nextNumber = (data && data.length > 0) ? extractNumberFromLoanNumber(data[0].loan_number) + 1 : 1;
-  const loanNumber = `LN${year}${String(nextNumber).padStart(4, '0')}`;
- 
-  return loanNumber;
-};
-
-
-/**
- * Extract number from loan number (e.g., "LN202600001" -> 1)
- */
-const extractNumberFromLoanNumber = (loanNumber) => {
-  if (!loanNumber) return 0;
-  // Extract last 4 digits
-  const match = loanNumber.match(/(\d{4})$/);
-  return match ? Number.parseInt(match[1], 10) : 0;
-};
-
-
-/**
  * Create new loan
  */
 export const createLoan = async (loan) => {
@@ -259,12 +226,10 @@ export const createLoan = async (loan) => {
   }
 
 
-  // Generate loan number
-  const loanNumber = await generateLoanNumber();
- 
   const { data, error } = await supabase
     .from('loans')
-    .insert([{ ...loan, loan_number: loanNumber }])
+    // Loan number is generated in DB trigger/function to keep sequence atomic.
+    .insert([{ ...loan }])
     .select(`
       *,
       customers (
