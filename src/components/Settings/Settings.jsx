@@ -234,7 +234,7 @@ const Settings = () => {
                   onChange={(e) => handleChange('cash_in_bank', e.target.value)}
                   onWheel={(e) => e.target.blur()}
                   inputProps={{ min: 0 }}
-                  helperText={settings.cash_in_bank?.description || 'Opening cash available in bank'}
+                  helperText={settings.cash_in_bank?.description || 'Current cash available in bank'}
                 />
               </Grid>
             </Grid>

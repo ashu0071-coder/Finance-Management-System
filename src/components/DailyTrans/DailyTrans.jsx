@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, 
+  Alert,
   Box,
   Button,
   Card,
@@ -38,7 +38,7 @@ import {
   updateDailyReceipt,
 } from '../../services/dailyTransService';
 import { getLoans } from '../../services/loanService';
-import { getSettings } from '../../services/settingsService';
+import { getSettings, updateSetting } from '../../services/settingsService';
 import {
   BANK_AMOUNT_NAME_PREFIX,
   calculateCashSummary,
@@ -62,6 +62,10 @@ const TRANSACTION_TYPE_OPTIONS = [
 
 
 const buildBankAmountReceiptName = (type) => `${BANK_AMOUNT_NAME_PREFIX}${type}`;
+
+
+const isBankAccountPaymentType = (value) =>
+  String(value || '').trim().toLowerCase() === 'bank account';
 
 
 const parseBankAmountType = (name) => {
@@ -291,13 +295,10 @@ export default function DailyTrans() { // NOSONAR
 
   const {
     rawCashInHand,
-    totalBankAmountReceipts,
-    totalBankAccountPaymentInflow,
   } = cashSummary;
 
 
-  const rawCashInBank =
-    cashInBankBase - totalBankAmountReceipts + totalBankAccountPaymentInflow;
+  const rawCashInBank = cashInBankBase;
 
 
   const safeCashInHand = Math.max(0, Math.round(rawCashInHand));
@@ -321,6 +322,14 @@ export default function DailyTrans() { // NOSONAR
 
   const handleDepositReturnChange = (field, value) => {
     setDepositReturnForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+
+  const persistCashInBank = async (nextValue) => {
+    const normalizedValue = Math.max(0, Math.round(toNumber(nextValue)));
+    await updateSetting('cash_in_bank', normalizedValue.toString());
+    setCashInBankBase(normalizedValue);
+    return normalizedValue;
   };
 
 
@@ -410,10 +419,27 @@ export default function DailyTrans() { // NOSONAR
       }
 
 
+      const previousPayment = editingPaymentId
+        ? payments.find((record) => record.id === editingPaymentId)
+        : null;
+      const previousBankEffect = isBankAccountPaymentType(previousPayment?.payment_type)
+        ? toNumber(previousPayment?.amount)
+        : 0;
+      const nextBankEffect = isBankAccountPaymentType(payload.payment_type)
+        ? payload.amount
+        : 0;
+      const bankBalanceDelta = nextBankEffect - previousBankEffect;
+
+
       if (editingPaymentId) {
         await updateDailyPayment(editingPaymentId, payload);
       } else {
         await createDailyPayment(payload);
+      }
+
+
+      if (bankBalanceDelta !== 0) {
+        await persistCashInBank(cashInBankBase + bankBalanceDelta);
       }
 
 
@@ -468,6 +494,7 @@ export default function DailyTrans() { // NOSONAR
 
 
       await createDailyReceipt(payload);
+      await persistCashInBank(cashInBankBase - payload.deposit_amount);
 
 
       setBankAmountForm({
@@ -711,7 +738,13 @@ export default function DailyTrans() { // NOSONAR
       setLoading(true);
       setError(null);
       setSuccessMessage('');
+      const recordToDelete = receipts.find((record) => record.id === id);
       await deleteDailyReceipt(id);
+
+
+      if (isBankAmountReceipt(recordToDelete)) {
+        await persistCashInBank(cashInBankBase + toNumber(recordToDelete?.deposit_amount));
+      }
 
 
       if (editingReceiptId === id) {
@@ -760,7 +793,13 @@ export default function DailyTrans() { // NOSONAR
       setLoading(true);
       setError(null);
       setSuccessMessage('');
+      const recordToDelete = payments.find((record) => record.id === id);
       await deleteDailyPayment(id);
+
+
+      if (isBankAccountPaymentType(recordToDelete?.payment_type)) {
+        await persistCashInBank(cashInBankBase - toNumber(recordToDelete?.amount));
+      }
 
 
       if (editingPaymentId === id) {
@@ -791,6 +830,8 @@ export default function DailyTrans() { // NOSONAR
       setLoading(true);
       setError(null);
       setSuccessMessage('');
+
+
       const { returnAmount, interestAmount } = getValidatedDepositReturn({
         selectedDepositForReturn,
         depositReturnForm,
