@@ -403,9 +403,10 @@ export default function Dashboard() {
                 sx={{
                   mt: 2,
                   borderRadius: 2,
-                  px: 2,
+                  px: 1.2,
                   py: 1,
                   textTransform: 'none',
+                  fontSize:'13px',
                   fontWeight: 700,
                   bgcolor: '#3f7ee5',
                   boxShadow: '0 10px 20px rgba(24,101,225,0.3)',
